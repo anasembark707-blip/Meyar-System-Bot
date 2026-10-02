@@ -14,7 +14,7 @@ const {
     AttachmentBuilder
 } = require('discord.js');
 const fs = require('fs');
-const path = path = require('path');
+const path = require('path');
 const express = require('express');
 
 const app = express();
@@ -28,15 +28,13 @@ app.listen(PORT, () => {
     console.log(`Web server is listening on port ${PORT}`);
 });
 
-// نظام تخزين الإعدادات بملف JSON لكل سيرفر
 const dbPath = path.join(__dirname, 'database.json');
 
-// الأسئلة الافتراضية الثابتة (في حال لم يقم السيرفر بتخصيص أسئلة خاصة به)
 const defaultQuestions = {
     1: "ما هو اسمك؟",
     2: "عمرك؟ (اجباري أرقام فقط)",
-    3: "يوزرك روبلكس؟ (إنجليزي فقط)",
-    4: "صورة بروفايلك روبلكس؟ (أرسل صورة)",
+    3: "يوزرك روبلوكس؟ (إنجليزي فقط)",
+    4: "صورة بروفايلك روبلوكس؟ (أرسل صورة)",
     5: "صورة دخولك القروب؟\nرابط قروبنا (16) 📎 : [اضغط هنا](https://www.roblox.com/share/g/387192545)\n(أرسل صورة إثبات الدخول)",
     6: "الحلف:\nانا اقر الاسم واقسم بالله اني ما اخرب اي رول وما استخدم اي رتبه ل تشويه سمعة السيرفر وما استخدم اي صلاحية لضرر أو لمصالح شخصية\n*(يرجى كتابة الحلف بالنص تماماً مع اسمك بدون أقواس)*"
 };
@@ -95,9 +93,11 @@ client.once('ready', async () => {
     const commands = [
         new SlashCommandBuilder()
             .setName('set-system')
-            .setDescription('إعدادات البوت الأساسية للسيرفر (رتبة الإداريين وروم اللوج)')
+            .setDescription('إعدادات البوت الأساسية للسيرفر (رتبة الإداريين، رتبة المشرفين، وروم اللوج)')
             .addRoleOption(option => 
-                option.setName('staff-role').setDescription('رتبة الإداريين المسؤولين عن التذاكر').setRequired(true))
+                option.setName('staff-role').setDescription('رتبة الإداريين المسؤولين عن استلام التذاكر').setRequired(true))
+            .addRoleOption(option => 
+                option.setName('supervisor-role').setDescription('رتبة الإشراف العامة (للاطلاع على التذاكر)').setRequired(true))
             .addChannelOption(option => 
                 option.setName('log-channel').setDescription('روم السجلات (Log) لحفظ تذاكر القبول والرفض').setRequired(true))
             .addChannelOption(option => 
@@ -250,17 +250,19 @@ client.on('interactionCreate', async interaction => {
             }
 
             const staffRole = interaction.options.getRole('staff-role');
+            const supervisorRole = interaction.options.getRole('supervisor-role');
             const logChannel = interaction.options.getChannel('log-channel');
             const categoryTickets = interaction.options.getChannel('category-tickets');
 
             saveGuildConfig(guild.id, {
                 staffRoleId: staffRole.id,
+                supervisorRoleId: supervisorRole.id,
                 logChannelId: logChannel.id,
                 categoryTicketsId: categoryTickets.id
             });
 
             return interaction.reply({ 
-                content: `تم حفظ إعدادات السيرفر العامة بنجاح! ✅\n- رتبة الإداريين: <@&${staffRole.id}>\n- روم اللوج: <#${logChannel.id}>\n- كاتيغوري التذاكر: \`${categoryTickets.name}\``, 
+                content: `تم حفظ إعدادات السيرفر العامة بنجاح! ✅\n- رتبة الإداريين: <@&${staffRole.id}>\n- رتبة الإشراف العامة: <@&${supervisorRole.id}>\n- روم اللوج: <#${logChannel.id}>\n- كاتيغوري التذاكر: \`${categoryTickets.name}\``, 
                 ephemeral: true 
             });
         }
@@ -336,7 +338,7 @@ client.on('interactionCreate', async interaction => {
 
         if (commandName === 'pointict') {
             const config = getGuildConfig(guild.id);
-            if (!config || !member.roles.cache.has(config.staffRoleId)) {
+            if (!config || (!member.roles.cache.has(config.staffRoleId) && !member.roles.cache.has(config.supervisorRoleId))) {
                 if (!member.permissions.has(PermissionsBitField.Flags.Administrator)) {
                     return interaction.reply({ content: "عذراً، هذا الأمر للفريق الإداري فقط! ❌", ephemeral: true });
                 }
@@ -398,6 +400,10 @@ client.on('interactionCreate', async interaction => {
                 {
                     id: config.staffRoleId,
                     allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory],
+                },
+                {
+                    id: config.supervisorRoleId,
+                    allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory],
                 }
             ],
         });
@@ -410,11 +416,11 @@ client.on('interactionCreate', async interaction => {
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('ticket_options').setLabel('خيارات التذكرة ⚙').setStyle(ButtonStyle.Primary),
             new ButtonBuilder().setCustomId('close_ticket').setLabel('إغلاق التذكرة ❌️').setStyle(ButtonStyle.Danger),
-            new ButtonBuilder().setCustomId('claim_ticket').setLabel('استلام التذكرة ✅️️').setStyle(ButtonStyle.Success)
+            new ButtonBuilder().setCustomId('claim_ticket').setLabel('استلام التذكرة ✅').setStyle(ButtonStyle.Success)
         );
 
         await ticketChannel.send({
-            content: `<@&${config.staffRoleId}> | <@${user.id}>`,
+            content: `<@&${config.staffRoleId}> | <@&${config.supervisorRoleId}> | <@${user.id}>`,
             embeds: [embed],
             components: [row]
         });
@@ -434,8 +440,8 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (customId === 'claim_ticket') {
-        if (!config || !member.roles.cache.has(config.staffRoleId)) {
-            return interaction.reply({ content: "هذا الزر خاص بالفريق الإداري فقط! ❌", ephemeral: true });
+        if (!config || (!member.roles.cache.has(config.staffRoleId) && !member.roles.cache.has(config.supervisorRoleId))) {
+            return interaction.reply({ content: "هذا الزر خاص بالفريق الإداري والمشرفين فقط! ❌", ephemeral: true });
         }
 
         const ticketData = activeTickets.get(channel.id);
@@ -445,6 +451,7 @@ client.on('interactionCreate', async interaction => {
 
         if (ticketData) ticketData.claimedBy = user.id;
 
+        // قفل الكتابة على باقي الإداريين وفتحها للمستلم فقط
         await channel.permissionOverwrites.edit(config.staffRoleId, {
             SendMessages: false,
             ViewChannel: true
@@ -467,8 +474,8 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (customId === 'close_ticket') {
-        if (!config || !member.roles.cache.has(config.staffRoleId)) {
-            return interaction.reply({ content: "هذا الزر خاص بالفريق الإداري فقط! ❌", ephemeral: true });
+        if (!config || (!member.roles.cache.has(config.staffRoleId) && !member.roles.cache.has(config.supervisorRoleId))) {
+            return interaction.reply({ content: "هذا الزر خاص بالفريق الإداري والمشرفين فقط! ❌", ephemeral: true });
         }
 
         const row = new ActionRowBuilder().addComponents(
@@ -545,8 +552,8 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (customId === 'accept_ticket') {
-        if (!config || !member.roles.cache.has(config.staffRoleId)) {
-            return interaction.reply({ content: "عذراً، أزرار القبول والرفض خاصة بالفريق الإداري فقط! ❌", ephemeral: true });
+        if (!config || (!member.roles.cache.has(config.staffRoleId) && !member.roles.cache.has(config.supervisorRoleId))) {
+            return interaction.reply({ content: "عذراً، أزرار القبول والرفض خاصة بالفريق الإداري والمشرفين فقط! ❌", ephemeral: true });
         }
 
         const ticketData = activeTickets.get(channel.id);
@@ -665,8 +672,8 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (customId === 'reject_ticket') {
-        if (!config || !member.roles.cache.has(config.staffRoleId)) {
-            return interaction.reply({ content: "عذراً، أزرار القبول والرفض خاصة بالفريق الإداري فقط! ❌", ephemeral: true });
+        if (!config || (!member.roles.cache.has(config.staffRoleId) && !member.roles.cache.has(config.supervisorRoleId))) {
+            return interaction.reply({ content: "عذراً، أزرار القبول والرفض خاصة بالفريق الإداري والمشرفين فقط! ❌", ephemeral: true });
         }
 
         const ticketData = activeTickets.get(channel.id);
@@ -709,7 +716,7 @@ client.on('interactionCreate', async interaction => {
         .username { font-weight: 600; color: #f2f3f5; margin-left: 8px; }
         .timestamp { font-size: 11px; color: #949ba4; }
         .text { margin-top: 4px; color: #dbdee1; white-space: pre-wrap; word-break: break-word; line-height: 1.4; }
-        .embed { background: #2b2d31; border-radius: 4px; border-right: 4px solid #f23f43; padding: 10px; margin-top: 8px; max-width: 520px; border-top: 1px solid #3f4147; border-left: 1px solid #3f4147; border-bottom: 1px solid #3f4147; }
+        .embed { background: #2b2d31; border-radius: 4px; border-right: 4px solid #5865f2; padding: 10px; margin-top: 8px; max-width: 520px; border-top: 1px solid #3f4147; border-left: 1px solid #3f4147; border-bottom: 1px solid #3f4147; }
         .embed-title { font-weight: bold; color: white; margin-bottom: 5px; }
         .embed-desc { font-size: 13px; color: #dbdee1; }
         .attachment img { max-width: 300px; border-radius: 8px; margin-top: 5px; }
@@ -760,7 +767,7 @@ client.on('interactionCreate', async interaction => {
 
                 const logEmbed = new EmbedBuilder()
                     .setColor(0xFF0000)
-                    .setTitle("سجل رفض تفعيل ❌")
+                    .setTitle("سجل رفض تفعيل جديد ❌")
                     .setDescription(
                         `**الإداري المسؤول:** <@${user.id}> (أيدي: \`${user.id}\`)\n` +
                         `**العضو صاحب التذكرة:** <@${ticketData.userId}>\n` +
@@ -775,24 +782,15 @@ client.on('interactionCreate', async interaction => {
 
                 const attachment = new AttachmentBuilder(Buffer.from(htmlContent, 'utf-8'), { name: `transcript-rejected-${ticketData.userId}.html` });
 
-                await logChan.send({ embeds: [logEmbed], files: [attachment]});
+                await logChan.send({ embeds: [logEmbed], files: [attachment] });
             }
         }
 
         activeTickets.delete(channel.id);
-        setTimeout(() => channel.delete().catch(() => {}), 10000);
-        return interaction.reply({ content: "تم رفض الطلب.", ephemeral: true });
+        setTimeout(() => channel.delete().catch(() => {}), 15000);
+        return interaction.reply({ content: "تم رفض التفعيل بنجاح.", ephemeral: true });
     }
 });
 
-const finalBotToken = process.env.DISCORD_TOKEN || process.env.TOKEN;
-
-if (!finalBotToken) {
-    console.error("خطأ حرج: لم يتم العثور على توكن البوت في متغيرات البيئة (DISCORD_TOKEN أو TOKEN)!");
-} else {
-    client.login(finalBotToken).then(() => {
-        console.log("تم إرسال أمر تسجيل الدخول للبوت العام بنجاح تام!");
-    }).catch(err => {
-        console.error("خطأ قاتل أثناء محاولة تسجيل دخول البوت العام من ديسكورد:", err);
-    });
-}
+const token = process.env.DISCORD_TOKEN || process.env.TOKEN;
+client.login(token);
