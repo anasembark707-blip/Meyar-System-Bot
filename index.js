@@ -14,7 +14,7 @@ const {
     AttachmentBuilder
 } = require('discord.js');
 const fs = require('fs');
-const path = require('path');
+const path = path = require('path');
 const express = require('express');
 
 const app = express();
@@ -38,7 +38,7 @@ const defaultQuestions = {
     3: "يوزرك روبلكس؟ (إنجليزي فقط)",
     4: "صورة بروفايلك روبلكس؟ (أرسل صورة)",
     5: "صورة دخولك القروب؟\nرابط قروبنا (16) 📎 : [اضغط هنا](https://www.roblox.com/share/g/387192545)\n(أرسل صورة إثبات الدخول)",
-    6: "الحلف:\nانا اقر (الاسم) واقسم بالله اني ما اخرب اي رول وما استخدم اي رتبه ل تشويه سمعة السيرفر وما استخدم اي صلاحية لضرر أو لمصالح شخصية\n*(يرجى كتابة الحلف بالنص تماماً مع اسمك)*"
+    6: "الحلف:\nانا اقر الاسم واقسم بالله اني ما اخرب اي رول وما استخدم اي رتبه ل تشويه سمعة السيرفر وما استخدم اي صلاحية لضرر أو لمصالح شخصية\n*(يرجى كتابة الحلف بالنص تماماً مع اسمك بدون أقواس)*"
 };
 
 function getGuildConfig(guildId) {
@@ -188,8 +188,8 @@ client.on('messageCreate', async message => {
             ticketData.step = 6;
             
             const name1 = ticketData.answers[1];
-            let q6Text = questions[6].replace('(الاسم)', name1).replace('الاسم', name1);
-            await message.channel.send(`**السؤال 6/6:** ${q6Text}`);
+            let q6Text = questions[6].replace('الاسم', name1).replace('(الاسم)', name1);
+            await message.channel.send(`**السؤال 6/6:**\n${q6Text}`);
         } else if (step === 6) {
             const cleanText = (str) => {
                 return str
@@ -201,13 +201,14 @@ client.on('messageCreate', async message => {
             };
 
             const name1 = ticketData.answers[1];
-            let expectedRaw = questions[6].replace('(الاسم)', name1).replace('الاسم', name1);
+            let template = questions[6].replace('الاسم', '(الاسم)').replace('(الاسم)', '(الاسم)');
+            let expectedRaw = template.replace('(الاسم)', name1);
 
             const userClean = cleanText(message.content);
             const expectedClean = cleanText(expectedRaw);
             
             if (userClean !== expectedClean) {
-                return message.reply("خطأ! الحلف غير مطابق تماماً لما طلب منك، يرجى كتابته بالشكل الصحيح ❌");
+                return message.reply("خطأ! الحلف غير مطابق تماماً لما طلب منك، تأكد من كتابة اسمك بشكل صحيح وعدم وجود أخطاء إملائية ❌");
             }
 
             ticketData.answers[6] = message.content;
@@ -373,7 +374,6 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply({ content: "عذراً، لم يقم صاحب السيرفر بإعداد البوت بعد (استخدموا /set-system) ❌", ephemeral: true });
         }
 
-        // فحص ما إذا كان العضو يمتلك تذكرة مفتوحة مسبقاً في الذاكرة
         const existingTicket = [...activeTickets.values()].find(t => t.userId === user.id);
         if (existingTicket) {
             return interaction.reply({ content: "عذراً، لديك تذكرة تفعيل مفتوحة مسبقاً! ❌", ephemeral: true });
@@ -410,7 +410,7 @@ client.on('interactionCreate', async interaction => {
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('ticket_options').setLabel('خيارات التذكرة ⚙').setStyle(ButtonStyle.Primary),
             new ButtonBuilder().setCustomId('close_ticket').setLabel('إغلاق التذكرة ❌️').setStyle(ButtonStyle.Danger),
-            new ButtonBuilder().setCustomId('claim_ticket').setLabel('استلاستبدال التذكرة / استلامها ✅').setStyle(ButtonStyle.Success)
+            new ButtonBuilder().setCustomId('claim_ticket').setLabel('استلام التذكرة ✅️️').setStyle(ButtonStyle.Success)
         );
 
         await ticketChannel.send({
@@ -497,7 +497,7 @@ client.on('interactionCreate', async interaction => {
             await channel.send(`**ترك التذكرة 🚫**\nالإداري المستلم ترك التذكرة <@${user.id}>\nتم خصم نقطة واحدة منك، وتم مسح صلاحيتك الخاصة وإعادة فتح الكتابة للإداريين.`);
             
             const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('claim_ticket').setLabel('استلام التذكرة ✅').setStyle(ButtonStyle.Success)
+                new ButtonBuilder().setCustomId('claim_ticket').setLabel('استلام التذكرة ✅️').setStyle(ButtonStyle.Success)
             );
             await channel.send({ content: `<@&${config.staffRoleId}>\nالرجاء الإستلام`, components: [row] });
         }
@@ -775,7 +775,7 @@ client.on('interactionCreate', async interaction => {
 
                 const attachment = new AttachmentBuilder(Buffer.from(htmlContent, 'utf-8'), { name: `transcript-rejected-${ticketData.userId}.html` });
 
-                await logChan.send({ embeds: [logEmbed], files: [attachment] });
+                await logChan.send({ embeds: [logEmbed], files: [attachment]});
             }
         }
 
