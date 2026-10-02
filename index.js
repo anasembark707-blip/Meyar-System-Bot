@@ -31,11 +31,25 @@ app.listen(PORT, () => {
 // نظام تخزين الإعدادات بملف JSON لكل سيرفر
 const dbPath = path.join(__dirname, 'database.json');
 
+// الأسئلة الافتراضية الثابتة (في حال لم يقم السيرفر بتخصيص أسئلة خاصة به)
+const defaultQuestions = {
+    1: "ما هو اسمك؟",
+    2: "عمرك؟ (اجباري أرقام فقط)",
+    3: "يوزرك روبلكس؟ (إنجليزي فقط)",
+    4: "صورة بروفايلك روبلكس؟ (أرسل صورة)",
+    5: "صورة دخولك القروب؟\nرابط قروبنا (16) 📎 : [اضغط هنا](https://www.roblox.com/share/g/387192545)\n(أرسل صورة إثبات الدخول)",
+    6: "الحلف:\nانا اقر (الاسم) واقسم بالله اني ما اخرب اي رول وما استخدم اي رتبه ل تشويه سمعة السيرفر وما استخدم اي صلاحية لضرر أو لمصالح شخصية\n*(يرجى كتابة الحلف بالنص تماماً مع اسمك)*"
+};
+
 function getGuildConfig(guildId) {
     if (!fs.existsSync(dbPath)) return null;
     try {
         const data = JSON.parse(fs.readFileSync(dbPath, 'utf8'));
-        return data[guildId] || null;
+        const config = data[guildId] || null;
+        if (config && !config.questions) {
+            config.questions = { ...defaultQuestions };
+        }
+        return config;
     } catch (e) {
         return null;
     }
@@ -50,7 +64,11 @@ function saveGuildConfig(guildId, newConfig) {
             data = {};
         }
     }
-    data[guildId] = { ...(data[guildId] || {}), ...newConfig };
+    data[guildId] = { 
+        ...(data[guildId] || {}), 
+        ...newConfig,
+        questions: newConfig.questions || (data[guildId] && data[guildId].questions) || { ...defaultQuestions }
+    };
     fs.writeFileSync(dbPath, JSON.stringify(data, null, 2), 'utf8');
 }
 
@@ -88,6 +106,18 @@ client.once('ready', async () => {
             .setName('setup-verify')
             .setDescription('إرسال بنر فتح تذكرة التفعيل الإداري في الروم الحالي'),
         new SlashCommandBuilder()
+            .setName('set-banner')
+            .setDescription('تخصيص عنوان ووصف بنر التفعيل الخاص بسيرفرك')
+            .addStringOption(option => option.setName('title').setDescription('عنوان البنر الجديد').setRequired(true))
+            .addStringOption(option => option.setName('description').setDescription('وصف البنر الجديد').setRequired(true)),
+        new SlashCommandBuilder()
+            .setName('set-question')
+            .setDescription('تعديل نص أحد الأسئلة الستة الخاصة بالتفعيل في سيرفرك')
+            .addIntegerOption(option => 
+                option.setName('number').setDescription('رقم السؤال المراد تعديله (من 1 إلى 6)').setRequired(true).setMinValue(1).setMaxValue(6))
+            .addStringOption(option => 
+                option.setName('text').setDescription('نص السؤال الجديد').setRequired(true)),
+        new SlashCommandBuilder()
             .setName('pointict')
             .setDescription('عرض نقاط الإداريين في تذاكر التفعيل'),
         new SlashCommandBuilder()
@@ -120,25 +150,27 @@ client.on('messageCreate', async message => {
         }
 
         const step = ticketData.step;
+        const config = getGuildConfig(message.guild.id);
+        const questions = config && config.questions ? config.questions : defaultQuestions;
 
         if (step === 1) {
             ticketData.answers[1] = message.content;
             ticketData.step = 2;
-            await message.channel.send(`**السؤال 2/6:** عمرك؟ (اجباري أرقام فقط)`);
+            await message.channel.send(`**السؤال 2/6:** ${questions[2]}`);
         } else if (step === 2) {
             if (isNaN(message.content)) {
                 return message.reply("خطأ! عيد أرسل أرقام فقط ❌");
             }
             ticketData.answers[2] = message.content;
             ticketData.step = 3;
-            await message.channel.send(`**السؤال 3/6:** يوزرك روبلكس؟ (إنجليزي فقط)`);
+            await message.channel.send(`**السؤال 3/6:** ${questions[3]}`);
         } else if (step === 3) {
             if (!/^[A-Za-z0-9_]+$/.test(message.content)) {
                 return message.reply("خطأ! يرجى إدخال أحرف إنجليزية وأرقام فقط ❌");
             }
             ticketData.answers[3] = message.content;
             ticketData.step = 4;
-            await message.channel.send(`**السؤال 4/6:** صورة بروفايلك روبلكس؟ (أرسل صورة)`);
+            await message.channel.send(`**السؤال 4/6:** ${questions[4]}`);
         } else if (step === 4) {
             const attachment = message.attachments.first();
             if (!attachment) {
@@ -146,7 +178,7 @@ client.on('messageCreate', async message => {
             }
             ticketData.answers[4] = attachment.url;
             ticketData.step = 5;
-            await message.channel.send(`**السؤال 5/6:** صورة دخولك القروب؟\nرابط قروبنا (16) 📎 : [اضغط هنا](https://www.roblox.com/share/g/387192545)\n(أرسل صورة إثبات الدخول)`);
+            await message.channel.send(`**السؤال 5/6:** ${questions[5]}`);
         } else if (step === 5) {
             const attachment = message.attachments.first();
             if (!attachment) {
@@ -156,7 +188,8 @@ client.on('messageCreate', async message => {
             ticketData.step = 6;
             
             const name1 = ticketData.answers[1];
-            await message.channel.send(`**السؤال 6/6:** الحلف:\nانا اقر (${name1}) واقسم بالله اني ما اخرب اي رول وما استخدم اي رتبه ل تشويه سمعة السيرفر وما استخدم اي صلاحية لضرر أو لمصالح شخصية\n*(يرجى كتابة الحلف بالنص تماماً مع اسمك)*`);
+            let q6Text = questions[6].replace('(الاسم)', name1).replace('الاسم', name1);
+            await message.channel.send(`**السؤال 6/6:** ${q6Text}`);
         } else if (step === 6) {
             const cleanText = (str) => {
                 return str
@@ -167,8 +200,11 @@ client.on('messageCreate', async message => {
                     .trim();
             };
 
+            const name1 = ticketData.answers[1];
+            let expectedRaw = questions[6].replace('(الاسم)', name1).replace('الاسم', name1);
+
             const userClean = cleanText(message.content);
-            const expectedClean = cleanText(`انا اقر ${ticketData.answers[1]} واقسم بالله اني ما اخرب اي رول وما استخدم اي رتبه ل تشويه سمعة السيرفر وما استخدم اي صلاحية لضرر أو لمصالح شخصية`);
+            const expectedClean = cleanText(expectedRaw);
             
             if (userClean !== expectedClean) {
                 return message.reply("خطأ! الحلف غير مطابق تماماً لما طلب منك، يرجى كتابته بالشكل الصحيح ❌");
@@ -228,6 +264,39 @@ client.on('interactionCreate', async interaction => {
             });
         }
 
+        if (commandName === 'set-banner') {
+            if (!member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+                return interaction.reply({ content: "عذراً، هذا الأمر للأحكام الإدارية فقط! ❌", ephemeral: true });
+            }
+
+            const customTitle = interaction.options.getString('title');
+            const customDesc = interaction.options.getString('description');
+
+            saveGuildConfig(guild.id, {
+                bannerTitle: customTitle,
+                bannerDesc: customDesc
+            });
+
+            return interaction.reply({ content: "تم تحديث عنوان ووصف بنر التفعيل الخاص بسيرفرك بنجاح! ✅", ephemeral: true });
+        }
+
+        if (commandName === 'set-question') {
+            if (!member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+                return interaction.reply({ content: "عذراً، هذا الأمر للأحكام الإدارية فقط! ❌", ephemeral: true });
+            }
+
+            const qNum = interaction.options.getInteger('number');
+            const qText = interaction.options.getString('text');
+
+            const config = getGuildConfig(guild.id) || {};
+            const currentQuestions = config.questions || { ...defaultQuestions };
+            currentQuestions[qNum] = qText;
+
+            saveGuildConfig(guild.id, { questions: currentQuestions });
+
+            return interaction.reply({ content: `تم تحديث السؤال رقم (${qNum}) بنجاح في سيرفرك! ✅`, ephemeral: true });
+        }
+
         if (commandName === 'setup-verify') {
             if (!member.permissions.has(PermissionsBitField.Flags.Administrator)) {
                 return interaction.reply({ content: "عذراً، هذا الأمر للأحكام الإدارية فقط! ❌", ephemeral: true });
@@ -240,15 +309,18 @@ client.on('interactionCreate', async interaction => {
 
             await interaction.deferReply({ ephemeral: true });
 
+            const embedTitle = config.bannerTitle || "من هنا يمكنكم العب والتفعيل معنا 💞.";
+            const embedDesc = config.bannerDesc || (
+                "فتح تذكرة ل تقديم على رتبة تصريح لعب 🎮\n\n" +
+                "يمكنك من خلالها لعب الرولات معنا 🤝🏼\n\n" +
+                "قم فقط ب الإجابة على الأسئلة التفاعليه 🤍.\n\n" +
+                "وشكرا لكم...💞"
+            );
+
             const embed = new EmbedBuilder()
                 .setColor(0x00FF00)
-                .setTitle("من هنا يمكنكم العب والتفعيل معنا 💞.")
-                .setDescription(
-                    "فتح تذكرة ل تقديم على رتبة تصريح لعب 🎮\n\n" +
-                    "يمكنك من خلالها لعب الرولات معنا 🤝🏼\n\n" +
-                    "قم فقط ب الإجابة على الأسئلة التفاعليه 🤍.\n\n" +
-                    "وشكرا لكم...💞"
-                );
+                .setTitle(embedTitle)
+                .setDescription(embedDesc);
 
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder()
@@ -301,6 +373,12 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply({ content: "عذراً، لم يقم صاحب السيرفر بإعداد البوت بعد (استخدموا /set-system) ❌", ephemeral: true });
         }
 
+        // فحص ما إذا كان العضو يمتلك تذكرة مفتوحة مسبقاً في الذاكرة
+        const existingTicket = [...activeTickets.values()].find(t => t.userId === user.id);
+        if (existingTicket) {
+            return interaction.reply({ content: "عذراً، لديك تذكرة تفعيل مفتوحة مسبقاً! ❌", ephemeral: true });
+        }
+
         await interaction.deferReply({ ephemeral: true });
 
         const ticketName = `Ticket-${user.username}`;
@@ -332,7 +410,7 @@ client.on('interactionCreate', async interaction => {
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('ticket_options').setLabel('خيارات التذكرة ⚙').setStyle(ButtonStyle.Primary),
             new ButtonBuilder().setCustomId('close_ticket').setLabel('إغلاق التذكرة ❌️').setStyle(ButtonStyle.Danger),
-            new ButtonBuilder().setCustomId('claim_ticket').setLabel('استلام التذكرة ✅').setStyle(ButtonStyle.Success)
+            new ButtonBuilder().setCustomId('claim_ticket').setLabel('استلاستبدال التذكرة / استلامها ✅').setStyle(ButtonStyle.Success)
         );
 
         await ticketChannel.send({
@@ -349,7 +427,8 @@ client.on('interactionCreate', async interaction => {
             timer: null
         });
 
-        await ticketChannel.send(`<@${user.id}> **السؤال 1/6:** ما هو اسمك؟`);
+        const questions = config.questions || defaultQuestions;
+        await ticketChannel.send(`<@${user.id}> **السؤال 1/6:** ${questions[1]}`);
 
         return interaction.editReply({ content: `تم فتح تذكرتك بنجاح هنا: <#${ticketChannel.id}> 🎟` });
     }
@@ -381,7 +460,7 @@ client.on('interactionCreate', async interaction => {
         staffPoints.set(user.id, currentPoints + 1);
 
         await channel.send({
-            content: `تم استلاستبدال التذكرة / استلامها بنجاح ! ✅️\nالإداري المستلم : <@${user.id}>\nألايدي : (\`${user.id}\`) 👤\nتم منح الإداري نقطة واحدة ( +1 ) ✔\nإجمالي نقاطك الحالية = ${currentPoints + 1} 📊`
+            content: `تم استلام التذكرة بنجاح ! ✅️\nالإداري المستلم : <@${user.id}>\nألايدي : (\`${user.id}\`) 👤\nتم منح الإداري نقطة واحدة ( +1 ) ✔\nإجمالي نقاطك الحالية = ${currentPoints + 1} 📊`
         });
 
         return interaction.reply({ content: "تم استلام التذكرة بنجاح وتسجيل النقطة لك.", ephemeral: true });
@@ -426,6 +505,7 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (customId === 'delete_ticket_confirm') {
+        activeTickets.delete(channel.id);
         await channel.send("حذف التذكرة 🗑\nسيتم حذف التذكرة...");
         setTimeout(() => channel.delete().catch(() => {}), 3000);
     }
@@ -445,6 +525,7 @@ client.on('interactionCreate', async interaction => {
         await channel.send(`تم تفعيل وضع التنبيه ⚠️\nلـ العضو <@${ticketData.userId}>\nاذا لم يتم الرد في ٥ دقائق سيتم إغلاق التذكرة تلقائيا.`);
         
         const timer = setTimeout(async () => {
+            activeTickets.delete(channel.id);
             await channel.send("انتهت المدة ولم يتم الرد، سيتم حذف التذكرة تلقائياً.");
             setTimeout(() => channel.delete().catch(() => {}), 3000);
         }, 5 * 60 * 1000);
@@ -578,6 +659,7 @@ client.on('interactionCreate', async interaction => {
             }
         }
 
+        activeTickets.delete(channel.id);
         setTimeout(() => channel.delete().catch(() => {}), 15000);
         return interaction.reply({ content: "تم قبول التفعيل بنجاح.", ephemeral: true });
     }
@@ -697,6 +779,7 @@ client.on('interactionCreate', async interaction => {
             }
         }
 
+        activeTickets.delete(channel.id);
         setTimeout(() => channel.delete().catch(() => {}), 10000);
         return interaction.reply({ content: "تم رفض الطلب.", ephemeral: true });
     }
