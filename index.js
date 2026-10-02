@@ -98,8 +98,6 @@ client.once('ready', async () => {
                 option.setName('staff-role').setDescription('رتبة الفريق الإداري (المسؤولون عن التذاكر)').setRequired(true))
             .addRoleOption(option => 
                 option.setName('supervisor-role').setDescription('رتبة الإشراف العامة').setRequired(true))
-            .addRoleOption(option => 
-                option.setName('executive-role').setDescription('رتبة الإدارة التنفيذية (رؤية التذاكر من بعيد بدون منشن)').setRequired(true))
             .addChannelOption(option => 
                 option.setName('log-channel').setDescription('روم السجلات (Log)').setRequired(true))
             .addChannelOption(option => 
@@ -253,20 +251,18 @@ client.on('interactionCreate', async interaction => {
 
             const staffRole = interaction.options.getRole('staff-role');
             const supervisorRole = interaction.options.getRole('supervisor-role');
-            const executiveRole = interaction.options.getRole('executive-role');
             const logChannel = interaction.options.getChannel('log-channel');
             const categoryTickets = interaction.options.getChannel('category-tickets');
 
             saveGuildConfig(guild.id, {
                 staffRoleId: staffRole.id,
                 supervisorRoleId: supervisorRole.id,
-                executiveRoleId: executiveRole.id,
                 logChannelId: logChannel.id,
                 categoryTicketsId: categoryTickets.id
             });
 
             return interaction.reply({ 
-                content: `تم حفظ إعدادات السيرفر العامة بنجاح! ✅\n- الفريق الإداري: <@&${staffRole.id}>\n- الإشراف العامة: <@&${supervisorRole.id}>\n- الإدارة التنفيذية: <@&${executiveRole.id}>\n- روم اللوج: <#${logChannel.id}>`, 
+                content: `تم حفظ إعدادات السيرفر العامة بنجاح! ✅\n- الفريق الإداري: <@&${staffRole.id}>\n- الإشراف العامة: <@&${supervisorRole.id}>\n- روم اللوج: <#${logChannel.id}>`, 
                 ephemeral: true 
             });
         }
@@ -389,7 +385,7 @@ client.on('interactionCreate', async interaction => {
 
         const ticketName = `Ticket-${user.username}`;
         
-        // إعداد الصلاحيات: فريق الإدارة والمشرفين يقدرون يكتبون، الإدارة التنفيذية يشوفون من بعيد بدون كتابة أو منشن
+        // إعداد الصلاحيات للفريق الإداري والمشرفين فقط
         const overwrites = [
             {
                 id: guild.id,
@@ -409,14 +405,6 @@ client.on('interactionCreate', async interaction => {
             }
         ];
 
-        if (config.executiveRoleId) {
-            overwrites.push({
-                id: config.executiveRoleId,
-                allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.ReadMessageHistory],
-                deny: [PermissionsBitField.Flags.SendMessages]
-            });
-        }
-
         const ticketChannel = await guild.channels.create({
             name: ticketName,
             type: ChannelType.GuildText,
@@ -435,7 +423,6 @@ client.on('interactionCreate', async interaction => {
             new ButtonBuilder().setCustomId('claim_ticket').setLabel('استلام التذكرة ✅').setStyle(ButtonStyle.Success)
         );
 
-        // المنشن هنا لفريق الإدارة والمشرفين وصاحب التذكرة فقط (بدون الإدارة التنفيذية عشان ما يجيهم إزعاج)
         await ticketChannel.send({
             content: `<@&${config.staffRoleId}> | <@&${config.supervisorRoleId}> | <@${user.id}>`,
             embeds: [embed],
@@ -469,6 +456,11 @@ client.on('interactionCreate', async interaction => {
         if (ticketData) ticketData.claimedBy = user.id;
 
         await channel.permissionOverwrites.edit(config.staffRoleId, {
+            SendMessages: false,
+            ViewChannel: true
+        }).catch(() => {});
+
+        await channel.permissionOverwrites.edit(config.supervisorRoleId, {
             SendMessages: false,
             ViewChannel: true
         }).catch(() => {});
@@ -515,14 +507,19 @@ client.on('interactionCreate', async interaction => {
                 ViewChannel: true
             }).catch(() => {});
 
+            await channel.permissionOverwrites.edit(config.supervisorRoleId, {
+                SendMessages: true,
+                ViewChannel: true
+            }).catch(() => {});
+
             await channel.permissionOverwrites.delete(user.id).catch(() => {});
 
-            await channel.send(`**ترك التذكرة 🚫**\nالإداري المستلم ترك التذكرة <@${user.id}>\nتم خصم نقطة واحدة منك، وتم مسح صلاحيتك الخاصة وإعادة فتح الكتابة للفريق الإداري.`);
+            await channel.send(`**ترك التذكرة 🚫**\nالإداري المستلم ترك التذكرة <@${user.id}>\nتم خصم نقطة واحدة منك، وتم مسح صلاحيتك الخاصة وإعادة فتح الكتابة للفريق الإداري والمشرفين.`);
             
             const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('claim_ticket').setLabel('استلام التذكرة ✅️').setStyle(ButtonStyle.Success)
+                new ButtonBuilder().setCustomId('claim_ticket').setLabel('استلام التذكرة ✅️️').setStyle(ButtonStyle.Success)
             );
-            await channel.send({ content: `<@&${config.staffRoleId}>\nالرجاء الإستلام`, components: [row] });
+            await channel.send({ content: `<@&${config.staffRoleId}> | <@&${config.supervisorRoleId}>\nالرجاء الإستلام`, components: [row] });
         }
         return interaction.reply({ content: "تم ترك التذكرة.", ephemeral: true });
     }
@@ -562,7 +559,7 @@ client.on('interactionCreate', async interaction => {
         if (ticketData && ticketData.claimedBy) {
             await channel.send(`استدعاء الاداري ☑️\nتم استدعاء الإداري المسؤول <@${ticketData.claimedBy}>`);
         } else {
-            await channel.send(`استدعاء الاداري ☑️\n<@&${config.staffRoleId}> الرجاء الرد على التذكرة!`);
+            await channel.send(`استدعاء الاداري ☑️\n<@&${config.staffRoleId}> | <@&${config.supervisorRoleId}> الرجاء الرد على التذكرة!`);
         }
         return interaction.reply({ content: "تم الاستدعاء.", ephemeral: true });
     }
@@ -759,7 +756,7 @@ client.on('interactionCreate', async interaction => {
                     <span class="username">${authorName}</span>
                     <span class="timestamp">${time}</span>
                 </div>
-                <div class="text">${text}</div>`;
+                .text<div class="text">${text}</div>`;
 
                     if (msg.embeds && msg.embeds.length > 0) {
                         for (const embed of msg.embeds) {
@@ -793,7 +790,7 @@ client.on('interactionCreate', async interaction => {
                         `٣ الإجابة : ${ticketData.answers[3]}\n` +
                         `٤ الإجابة : [صورة](${ticketData.answers[4]})\n` +
                         `٥ الإجابة : [صورة](${ticketData.answers[5]})\n` +
-                        `٦ الإجابة : ${ticketDate.answers[6]}`
+                        `٦ الإجابة : ${ticketData.answers[6]}`
                     );
 
                 const attachment = new AttachmentBuilder(Buffer.from(htmlContent, 'utf-8'), { name: `transcript-rejected-${ticketData.userId}.html` });
