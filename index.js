@@ -93,11 +93,11 @@ client.once('ready', async () => {
     const commands = [
         new SlashCommandBuilder()
             .setName('set-system')
-            .setDescription('إعدادات البوت الأساسية للسيرفر (رتبة الإداريين، رتبة المشرفين، وروم اللوج)')
+            .setDescription('إعدادات البوت الأساسية للسيرفر (رتبة الفريق الإداري، رتبة الإشراف العامة، وروم اللوج)')
             .addRoleOption(option => 
-                option.setName('staff-role').setDescription('رتبة الإداريين المسؤولين عن استلام التذاكر').setRequired(true))
+                option.setName('staff-role').setDescription('رتبة الفريق الإداري (المسؤولون عن استلام التذاكر)').setRequired(true))
             .addRoleOption(option => 
-                option.setName('supervisor-role').setDescription('رتبة الإشراف العامة (للاطلاع على التذاكر)').setRequired(true))
+                option.setName('supervisor-role').setDescription('رتبة الإشراف العامة (للمراقبة والمتابعة من بعيد)').setRequired(true))
             .addChannelOption(option => 
                 option.setName('log-channel').setDescription('روم السجلات (Log) لحفظ تذاكر القبول والرفض').setRequired(true))
             .addChannelOption(option => 
@@ -119,10 +119,10 @@ client.once('ready', async () => {
                 option.setName('text').setDescription('نص السؤال الجديد').setRequired(true)),
         new SlashCommandBuilder()
             .setName('pointict')
-            .setDescription('عرض نقاط الإداريين في تذاكر التفعيل'),
+            .setDescription('عرض نقاط الفريق الإداري في تذاكر التفعيل'),
         new SlashCommandBuilder()
             .setName('restpointict')
-            .setDescription('تصفير نقاط الإداريين بالكامل في هذا السيرفر')
+            .setDescription('تصفير نقاط الفريق الإداري بالكامل في هذا السيرفر')
     ];
 
     const botToken = process.env.DISCORD_TOKEN || process.env.TOKEN;
@@ -262,7 +262,7 @@ client.on('interactionCreate', async interaction => {
             });
 
             return interaction.reply({ 
-                content: `تم حفظ إعدادات السيرفر العامة بنجاح! ✅\n- رتبة الإداريين: <@&${staffRole.id}>\n- رتبة الإشراف العامة: <@&${supervisorRole.id}>\n- روم اللوج: <#${logChannel.id}>\n- كاتيغوري التذاكر: \`${categoryTickets.name}\``, 
+                content: `تم حفظ إعدادات السيرفر العامة بنجاح! ✅\n- رتبة الفريق الإداري: <@&${staffRole.id}>\n- رتبة الإشراف العامة: <@&${supervisorRole.id}>\n- روم اللوج: <#${logChannel.id}>\n- كاتيغوري التذاكر: \`${categoryTickets.name}\``, 
                 ephemeral: true 
             });
         }
@@ -340,7 +340,7 @@ client.on('interactionCreate', async interaction => {
             const config = getGuildConfig(guild.id);
             if (!config || (!member.roles.cache.has(config.staffRoleId) && !member.roles.cache.has(config.supervisorRoleId))) {
                 if (!member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-                    return interaction.reply({ content: "عذراً، هذا الأمر للفريق الإداري فقط! ❌", ephemeral: true });
+                    return interaction.reply({ content: "عذراً، هذا الأمر للفريق الإداري والمشرفين فقط! ❌", ephemeral: true });
                 }
             }
             
@@ -362,7 +362,7 @@ client.on('interactionCreate', async interaction => {
                 return interaction.reply({ content: "عذراً، هذا الأمر للأحكام الإدارية فقط! ❌", ephemeral: true });
             }
             staffPoints.clear();
-            return interaction.reply({ content: "تم تصفير جميع نقاط الإداريين بنجاح! 🔄", ephemeral: true });
+            return interaction.reply({ content: "تم تصفير جميع نقاط الفريق الإداري بنجاح! 🔄", ephemeral: true });
         }
     }
 
@@ -451,7 +451,7 @@ client.on('interactionCreate', async interaction => {
 
         if (ticketData) ticketData.claimedBy = user.id;
 
-        // قفل الكتابة على باقي الإداريين وفتحها للمستلم فقط
+        // قفل الكتابة على باقي الفريق الإداري وفتحها للمستلم فقط
         await channel.permissionOverwrites.edit(config.staffRoleId, {
             SendMessages: false,
             ViewChannel: true
@@ -501,7 +501,7 @@ client.on('interactionCreate', async interaction => {
 
             await channel.permissionOverwrites.delete(user.id).catch(() => {});
 
-            await channel.send(`**ترك التذكرة 🚫**\nالإداري المستلم ترك التذكرة <@${user.id}>\nتم خصم نقطة واحدة منك، وتم مسح صلاحيتك الخاصة وإعادة فتح الكتابة للإداريين.`);
+            await channel.send(`**ترك التذكرة 🚫**\nالإداري المستلم ترك التذكرة <@${user.id}>\nتم خصم نقطة واحدة منك، وتم مسح صلاحيتك الخاصة وإعادة فتح الكتابة للفريق الإداري.`);
             
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId('claim_ticket').setLabel('استلام التذكرة ✅️').setStyle(ButtonStyle.Success)
@@ -544,7 +544,7 @@ client.on('interactionCreate', async interaction => {
     if (customId === 'opt_summon') {
         const ticketData = activeTickets.get(channel.id);
         if (ticketData && ticketData.claimedBy) {
-            await channel.send(`استدعاء الاداري ☑️\nتم استدعاء الاداري المسؤول <@${ticketData.claimedBy}>`);
+            await channel.send(`استدعاء الاداري ☑️\nتم استدعاء الإداري المسؤول <@${ticketData.claimedBy}>`);
         } else {
             await channel.send(`استدعاء الاداري ☑️\n<@&${config.staffRoleId}> الرجاء الرد على التذكرة!`);
         }
