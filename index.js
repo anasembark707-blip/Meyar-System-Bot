@@ -93,15 +93,17 @@ client.once('ready', async () => {
     const commands = [
         new SlashCommandBuilder()
             .setName('set-system')
-            .setDescription('إعدادات البوت الأساسية للسيرفر (رتبة الفريق الإداري، رتبة الإشراف العامة، وروم اللوج)')
+            .setDescription('إعدادات البوت الأساسية للسيرفر')
             .addRoleOption(option => 
-                option.setName('staff-role').setDescription('رتبة الفريق الإداري (المسؤولون عن استلام التذاكر)').setRequired(true))
+                option.setName('staff-role').setDescription('رتبة الفريق الإداري (المسؤولون عن التذاكر)').setRequired(true))
             .addRoleOption(option => 
-                option.setName('supervisor-role').setDescription('رتبة الإشراف العامة (للمراقبة والمتابعة من بعيد)').setRequired(true))
+                option.setName('supervisor-role').setDescription('رتبة الإشراف العامة').setRequired(true))
+            .addRoleOption(option => 
+                option.setName('executive-role').setDescription('رتبة الإدارة التنفيذية (رؤية التذاكر من بعيد بدون منشن)').setRequired(true))
             .addChannelOption(option => 
-                option.setName('log-channel').setDescription('روم السجلات (Log) لحفظ تذاكر القبول والرفض').setRequired(true))
+                option.setName('log-channel').setDescription('روم السجلات (Log)').setRequired(true))
             .addChannelOption(option => 
-                option.setName('category-tickets').setDescription('القسم (Category) اللي تنفتح فيه التذاكر').setRequired(true)),
+                option.setName('category-tickets').setDescription('قسم (Category) التذاكر').setRequired(true)),
         new SlashCommandBuilder()
             .setName('setup-verify')
             .setDescription('إرسال بنر فتح تذكرة التفعيل الإداري في الروم الحالي'),
@@ -251,25 +253,27 @@ client.on('interactionCreate', async interaction => {
 
             const staffRole = interaction.options.getRole('staff-role');
             const supervisorRole = interaction.options.getRole('supervisor-role');
+            const executiveRole = interaction.options.getRole('executive-role');
             const logChannel = interaction.options.getChannel('log-channel');
             const categoryTickets = interaction.options.getChannel('category-tickets');
 
             saveGuildConfig(guild.id, {
                 staffRoleId: staffRole.id,
                 supervisorRoleId: supervisorRole.id,
+                executiveRoleId: executiveRole.id,
                 logChannelId: logChannel.id,
                 categoryTicketsId: categoryTickets.id
             });
 
             return interaction.reply({ 
-                content: `تم حفظ إعدادات السيرفر العامة بنجاح! ✅\n- رتبة الفريق الإداري: <@&${staffRole.id}>\n- رتبة الإشراف العامة: <@&${supervisorRole.id}>\n- روم اللوج: <#${logChannel.id}>\n- كاتيغوري التذاكر: \`${categoryTickets.name}\``, 
+                content: `تم حفظ إعدادات السيرفر العامة بنجاح! ✅\n- الفريق الإداري: <@&${staffRole.id}>\n- الإشراف العامة: <@&${supervisorRole.id}>\n- الإدارة التنفيذية: <@&${executiveRole.id}>\n- روم اللوج: <#${logChannel.id}>`, 
                 ephemeral: true 
             });
         }
 
         if (commandName === 'set-banner') {
             if (!member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-                return interaction.reply({ content: "عذراً، هذا الأمر للأحكام الإدارية فقط! ❌", ephemeral: true });
+                return interaction.reply({ content: "عذراً، هذا الأمر للإدارة فقط! ❌", ephemeral: true });
             }
 
             const customTitle = interaction.options.getString('title');
@@ -280,12 +284,12 @@ client.on('interactionCreate', async interaction => {
                 bannerDesc: customDesc
             });
 
-            return interaction.reply({ content: "تم تحديث عنوان ووصف بنر التفعيل الخاص بسيرفرك بنجاح! ✅", ephemeral: true });
+            return interaction.reply({ content: "تم تحديث بنر التفعيل بنجاح! ✅", ephemeral: true });
         }
 
         if (commandName === 'set-question') {
             if (!member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-                return interaction.reply({ content: "عذراً، هذا الأمر للأحكام الإدارية فقط! ❌", ephemeral: true });
+                return interaction.reply({ content: "عذراً، هذا الأمر للإدارة فقط! ❌", ephemeral: true });
             }
 
             const qNum = interaction.options.getInteger('number');
@@ -297,17 +301,17 @@ client.on('interactionCreate', async interaction => {
 
             saveGuildConfig(guild.id, { questions: currentQuestions });
 
-            return interaction.reply({ content: `تم تحديث السؤال رقم (${qNum}) بنجاح في سيرفرك! ✅`, ephemeral: true });
+            return interaction.reply({ content: `تم تحديث السؤال رقم (${qNum}) بنجاح! ✅`, ephemeral: true });
         }
 
         if (commandName === 'setup-verify') {
             if (!member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-                return interaction.reply({ content: "عذراً، هذا الأمر للأحكام الإدارية فقط! ❌", ephemeral: true });
+                return interaction.reply({ content: "عذراً، هذا الأمر للإدارة فقط! ❌", ephemeral: true });
             }
 
             const config = getGuildConfig(guild.id);
             if (!config) {
-                return interaction.reply({ content: "تنبيه! لم يتم ضبط إعدادات السيرفر بعد. يرجى استخدام أمر `/set-system` أولاً لتحديد الرتب والرومات! ⚠️", ephemeral: true });
+                return interaction.reply({ content: "تنبيه! لم يتم ضبط إعدادات السيرفر بعد. يرجى استخدام أمر `/set-system` أولاً ⚠️", ephemeral: true });
             }
 
             await interaction.deferReply({ ephemeral: true });
@@ -359,7 +363,7 @@ client.on('interactionCreate', async interaction => {
 
         if (commandName === 'restpointict') {
             if (!member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-                return interaction.reply({ content: "عذراً، هذا الأمر للأحكام الإدارية فقط! ❌", ephemeral: true });
+                return interaction.reply({ content: "عذراً، هذا الأمر للإدارة فقط! ❌", ephemeral: true });
             }
             staffPoints.clear();
             return interaction.reply({ content: "تم تصفير جميع نقاط الفريق الإداري بنجاح! 🔄", ephemeral: true });
@@ -384,28 +388,40 @@ client.on('interactionCreate', async interaction => {
         await interaction.deferReply({ ephemeral: true });
 
         const ticketName = `Ticket-${user.username}`;
+        
+        // إعداد الصلاحيات: فريق الإدارة والمشرفين يقدرون يكتبون، الإدارة التنفيذية يشوفون من بعيد بدون كتابة أو منشن
+        const overwrites = [
+            {
+                id: guild.id,
+                deny: [PermissionsBitField.Flags.ViewChannel],
+            },
+            {
+                id: user.id,
+                allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory],
+            },
+            {
+                id: config.staffRoleId,
+                allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory],
+            },
+            {
+                id: config.supervisorRoleId,
+                allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory],
+            }
+        ];
+
+        if (config.executiveRoleId) {
+            overwrites.push({
+                id: config.executiveRoleId,
+                allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.ReadMessageHistory],
+                deny: [PermissionsBitField.Flags.SendMessages]
+            });
+        }
+
         const ticketChannel = await guild.channels.create({
             name: ticketName,
             type: ChannelType.GuildText,
             parent: config.categoryTicketsId,
-            permissionOverwrites: [
-                {
-                    id: guild.id,
-                    deny: [PermissionsBitField.Flags.ViewChannel],
-                },
-                {
-                    id: user.id,
-                    allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory],
-                },
-                {
-                    id: config.staffRoleId,
-                    allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory],
-                },
-                {
-                    id: config.supervisorRoleId,
-                    allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory],
-                }
-            ],
+            permissionOverwrites: overwrites,
         });
 
         const embed = new EmbedBuilder()
@@ -419,6 +435,7 @@ client.on('interactionCreate', async interaction => {
             new ButtonBuilder().setCustomId('claim_ticket').setLabel('استلام التذكرة ✅').setStyle(ButtonStyle.Success)
         );
 
+        // المنشن هنا لفريق الإدارة والمشرفين وصاحب التذكرة فقط (بدون الإدارة التنفيذية عشان ما يجيهم إزعاج)
         await ticketChannel.send({
             content: `<@&${config.staffRoleId}> | <@&${config.supervisorRoleId}> | <@${user.id}>`,
             embeds: [embed],
@@ -451,7 +468,6 @@ client.on('interactionCreate', async interaction => {
 
         if (ticketData) ticketData.claimedBy = user.id;
 
-        // قفل الكتابة على باقي الفريق الإداري وفتحها للمستلم فقط
         await channel.permissionOverwrites.edit(config.staffRoleId, {
             SendMessages: false,
             ViewChannel: true
@@ -777,7 +793,7 @@ client.on('interactionCreate', async interaction => {
                         `٣ الإجابة : ${ticketData.answers[3]}\n` +
                         `٤ الإجابة : [صورة](${ticketData.answers[4]})\n` +
                         `٥ الإجابة : [صورة](${ticketData.answers[5]})\n` +
-                        `٦ الإجابة : ${ticketData.answers[6]}`
+                        `٦ الإجابة : ${ticketDate.answers[6]}`
                     );
 
                 const attachment = new AttachmentBuilder(Buffer.from(htmlContent, 'utf-8'), { name: `transcript-rejected-${ticketData.userId}.html` });
