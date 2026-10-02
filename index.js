@@ -385,7 +385,7 @@ client.on('interactionCreate', async interaction => {
 
         const ticketName = `Ticket-${user.username}`;
         
-        // إعداد الصلاحيات للفريق الإداري والمشرفين فقط
+        // إعداد الصلاحيات: الفريق الإداري يقدر يكتب، ورتبة الإشراف العام تشوف التذكرة بدون كتابة أو إزعاج
         const overwrites = [
             {
                 id: guild.id,
@@ -401,7 +401,8 @@ client.on('interactionCreate', async interaction => {
             },
             {
                 id: config.supervisorRoleId,
-                allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory],
+                allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.ReadMessageHistory],
+                deny: [PermissionsBitField.Flags.SendMessages]
             }
         ];
 
@@ -423,8 +424,9 @@ client.on('interactionCreate', async interaction => {
             new ButtonBuilder().setCustomId('claim_ticket').setLabel('استلام التذكرة ✅').setStyle(ButtonStyle.Success)
         );
 
+        // المنشن هنا صار لفريق الإدارة وصاحب التذكرة فقط (بدون منشن الإشراف العام)
         await ticketChannel.send({
-            content: `<@&${config.staffRoleId}> | <@&${config.supervisorRoleId}> | <@${user.id}>`,
+            content: `<@&${config.staffRoleId}> | <@${user.id}>`,
             embeds: [embed],
             components: [row]
         });
@@ -456,11 +458,6 @@ client.on('interactionCreate', async interaction => {
         if (ticketData) ticketData.claimedBy = user.id;
 
         await channel.permissionOverwrites.edit(config.staffRoleId, {
-            SendMessages: false,
-            ViewChannel: true
-        }).catch(() => {});
-
-        await channel.permissionOverwrites.edit(config.supervisorRoleId, {
             SendMessages: false,
             ViewChannel: true
         }).catch(() => {});
@@ -507,19 +504,14 @@ client.on('interactionCreate', async interaction => {
                 ViewChannel: true
             }).catch(() => {});
 
-            await channel.permissionOverwrites.edit(config.supervisorRoleId, {
-                SendMessages: true,
-                ViewChannel: true
-            }).catch(() => {});
-
             await channel.permissionOverwrites.delete(user.id).catch(() => {});
 
-            await channel.send(`**ترك التذكرة 🚫**\nالإداري المستلم ترك التذكرة <@${user.id}>\nتم خصم نقطة واحدة منك، وتم مسح صلاحيتك الخاصة وإعادة فتح الكتابة للفريق الإداري والمشرفين.`);
+            await channel.send(`**ترك التذكرة 🚫**\nالإداري المستلم ترك التذكرة <@${user.id}>\nتم خصم نقطة واحدة منك، وتم مسح صلاحيتك الخاصة وإعادة فتح الكتابة للفريق الإداري.`);
             
             const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('claim_ticket').setLabel('استلام التذكرة ✅️️').setStyle(ButtonStyle.Success)
+                new ButtonBuilder().setCustomId('claim_ticket').setLabel('استلام التذكرة ✅️').setStyle(ButtonStyle.Success)
             );
-            await channel.send({ content: `<@&${config.staffRoleId}> | <@&${config.supervisorRoleId}>\nالرجاء الإستلام`, components: [row] });
+            await channel.send({ content: `<@&${config.staffRoleId}>\nالرجاء الإستلام`, components: [row] });
         }
         return interaction.reply({ content: "تم ترك التذكرة.", ephemeral: true });
     }
@@ -559,7 +551,7 @@ client.on('interactionCreate', async interaction => {
         if (ticketData && ticketData.claimedBy) {
             await channel.send(`استدعاء الاداري ☑️\nتم استدعاء الإداري المسؤول <@${ticketData.claimedBy}>`);
         } else {
-            await channel.send(`استدعاء الاداري ☑️\n<@&${config.staffRoleId}> | <@&${config.supervisorRoleId}> الرجاء الرد على التذكرة!`);
+            await channel.send(`استدعاء الاداري ☑️\n<@&${config.staffRoleId}> الرجاء الرد على التذكرة!`);
         }
         return interaction.reply({ content: "تم الاستدعاء.", ephemeral: true });
     }
@@ -756,7 +748,7 @@ client.on('interactionCreate', async interaction => {
                     <span class="username">${authorName}</span>
                     <span class="timestamp">${time}</span>
                 </div>
-                .text<div class="text">${text}</div>`;
+                <div class="text">${text}</div>`;
 
                     if (msg.embeds && msg.embeds.length > 0) {
                         for (const embed of msg.embeds) {
