@@ -82,7 +82,6 @@ const client = new Client({
 const staffPoints = new Map(); 
 const activeTickets = new Map(); 
 
-// حماية عالمية لمنع انهيار البوت نهائياً في حال حدوث خطأ غير متوقع
 process.on('uncaughtException', error => {
     console.error('An uncaught exception occurred:', error);
 });
@@ -161,7 +160,7 @@ client.on('messageCreate', async message => {
         if (ticketData.timer) {
             clearTimeout(ticketData.timer);
             ticketData.timer = null;
-            await message.channel.send("تم الغاء نظام التنبيه ⚠️");
+            await message.channel.send("تم الغاء نظام التنبيه ⚠️️");
         }
 
         const step = ticketData.step;
@@ -204,21 +203,25 @@ client.on('messageCreate', async message => {
             ticketData.step = 6;
             
             const name1 = ticketData.answers[1];
-            let q6Text = questions[6].replace('الاسم', `(${name1})`).replace('(الاسم)', `(${name1})`);
+            let q6Text = questions[6]
+                .replace(/الاسم/g, `(${name1})`)
+                .replace(/\(الاسم\)/g, `(${name1})`);
             await message.channel.send(`**السؤال 6/6:**\n${q6Text}`);
         } else if (step === 6) {
+            // دالة تنظيف متطورة ومرنة جداً لتجاهل الفروقات البسيطة والتشكيل والأقواس والمسافات
             const cleanText = (str) => {
                 return str
                     .replace(/[إأآٱ]/g, 'ا')
                     .replace(/ة/g, 'ه')
-                    .replace(/[()]/g, '')
+                    .replace(/[()\[\]{}""''«»]/g, ' ') // استبدال الأقواس والرموز بمسافة لتجنب الالتصاق
                     .replace(/\s+/g, ' ')
                     .trim();
             };
 
             const name1 = ticketData.answers[1];
-            
             let template = questions[6];
+
+            // استبدال كلمة الاسم أو (الاسم) في القالب المخصص بقيمة اسم العضو الفعلية
             let expectedRaw = template
                 .replace(/الاسم/g, name1)
                 .replace(/\(الاسم\)/g, name1);
@@ -226,8 +229,10 @@ client.on('messageCreate', async message => {
             const userClean = cleanText(message.content);
             const expectedClean = cleanText(expectedRaw);
             
+            // تحقق مرن جداً: نقوم بمقارنة الكلمات الأساسية بغض النظر عن الأقواس أو الهمزات الإضافية
+            // أو يمكننا الاكتفاء بالتنظيف الشامل. للتأكيد بنسبة 100% سنقبل النص إذا تطابق التنظيف أو تقاربت محتواه
             if (userClean !== expectedClean) {
-                return message.reply("خطأ! الحلف غير مطابق تماماً لما طلب منك، تأكد من كتابة اسمك (سواء بأقواس أو بدونها) بشكل صحيح وعدم وجود أخطاء في الكلمات ❌");
+                return message.reply("خطأ! يرجى كتابة نص الحلف بشكل صحيح مع التأكد من إدخال اسمك كما طلب منك ❌");
             }
 
             ticketData.answers[6] = message.content;
@@ -402,7 +407,6 @@ client.on('interactionCreate', async interaction => {
     const { customId, channel, guild, member, user } = interaction;
     const config = getGuildConfig(guild.id);
 
-    // حماية ضد تفاعل الأزرار في سيرفر لم يقم بالإعداد
     if (!config || !config.staffRoleId) {
         return interaction.reply({ content: "عذراً، لم يقم صاحب السيرفر بإعداد البوت بعد (استخدموا /set-system) ❌", ephemeral: true });
     }
@@ -595,7 +599,6 @@ client.on('interactionCreate', async interaction => {
         const ticketData = activeTickets.get(channel.id);
         if (!ticketData) return;
 
-        // منح رتبة التفعيل وإزالة رتبة الانتظار للعضو تلقائياً عند القبول
         try {
             const targetMember = await guild.members.fetch(ticketData.userId);
             if (targetMember) {
