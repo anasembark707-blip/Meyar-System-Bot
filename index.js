@@ -195,7 +195,7 @@ client.on('messageCreate', async message => {
                 return str
                     .replace(/[إأآٱ]/g, 'ا')
                     .replace(/ة/g, 'ه')
-                    .replace(/[()]/g, '')
+                    .replace(/[()]/g, '') // إزالة الأقواس لتصبح مرنة سواء كتبها أو لا
                     .replace(/\s+/g, ' ')
                     .trim();
             };
@@ -550,7 +550,7 @@ client.on('interactionCreate', async interaction => {
     if (customId === 'opt_summon') {
         const ticketData = activeTickets.get(channel.id);
         if (ticketData && ticketData.claimedBy) {
-            await channel.send(`استدعاء الاداري ☑️️\nتم استدعاء الإداري المسؤول <@${ticketData.claimedBy}>`);
+            await channel.send(`استدعاء الاداري ☑\nتم استدعاء الإداري المسؤول <@${ticketData.claimedBy}>`);
         } else {
             await channel.send(`استدعاء الاداري ☑️\n<@&${config.staffRoleId}> الرجاء الرد على التذكرة!`);
         }
