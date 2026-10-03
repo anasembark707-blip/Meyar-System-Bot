@@ -204,14 +204,14 @@ client.on('messageCreate', async message => {
             
             let template = questions[6];
             let expectedRaw = template
-                .replace(/الاسم/g, `(${name1})`)
-                .replace(/\(الاسم\)/g, `(${name1})`);
+                .replace(/الاسم/g, name1)
+                .replace(/\(الاسم\)/g, name1);
 
             const userClean = cleanText(message.content);
             const expectedClean = cleanText(expectedRaw);
             
             if (userClean !== expectedClean) {
-                return message.reply("خطأ! الحلف غير مطابق تماماً لما طلب منك، تأكد من كتابة اسمك بين أقواس بشكل صحيح وعدم وجود أخطاء في الكلمات ❌");
+                return message.reply("خطأ! الحلف غير مطابق تماماً لما طلب منك، تأكد من كتابة اسمك (سواء بأقواس أو بدونها) بشكل صحيح وعدم وجود أخطاء في الكلمات ❌");
             }
 
             ticketData.answers[6] = message.content;
@@ -550,7 +550,7 @@ client.on('interactionCreate', async interaction => {
     if (customId === 'opt_summon') {
         const ticketData = activeTickets.get(channel.id);
         if (ticketData && ticketData.claimedBy) {
-            await channel.send(`استدعاء الاداري ☑️\nتم استدعاء الإداري المسؤول <@${ticketData.claimedBy}>`);
+            await channel.send(`استدعاء الاداري ☑️️\nتم استدعاء الإداري المسؤول <@${ticketData.claimedBy}>`);
         } else {
             await channel.send(`استدعاء الاداري ☑️\n<@&${config.staffRoleId}> الرجاء الرد على التذكرة!`);
         }
