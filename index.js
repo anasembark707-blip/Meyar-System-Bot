@@ -125,6 +125,14 @@ client.once('ready', async () => {
             .addStringOption(option => option.setName('title').setDescription('عنوان البنر الجديد').setRequired(true))
             .addStringOption(option => option.setName('description').setDescription('وصف البنر الجديد').setRequired(true)),
         new SlashCommandBuilder()
+            .setName('set-ticket-embed')
+            .setDescription('تخصيص رسالة الإمبد التي تظهر داخل التذكرة عند فتحها')
+            .addStringOption(option => option.setName('text').setDescription('النص الجديد داخل إمبد التذكرة').setRequired(true)),
+        new SlashCommandBuilder()
+            .setName('set-button-text')
+            .setDescription('تخصيص نص زر فتح التذكرة في البنر الأساسي')
+            .addStringOption(option => option.setName('text').setDescription('نص الزر الجديد').setRequired(true)),
+        new SlashCommandBuilder()
             .setName('set-question')
             .setDescription('تعديل نص أحد الأسئلة الستة الخاصة بالتفعيل في سيرفرك')
             .addIntegerOption(option => 
@@ -160,7 +168,7 @@ client.on('messageCreate', async message => {
         if (ticketData.timer) {
             clearTimeout(ticketData.timer);
             ticketData.timer = null;
-            await message.channel.send("تم الغاء نظام التنبيه ⚠️️");
+            await message.channel.send("تم الغاء نظام التنبيه ⚠");
         }
 
         const step = ticketData.step;
@@ -204,35 +212,36 @@ client.on('messageCreate', async message => {
             
             const name1 = ticketData.answers[1];
             let q6Text = questions[6]
-                .replace(/الاسم/g, `(${name1})`)
-                .replace(/\(الاسم\)/g, `(${name1})`);
+                .replace(/الاسم/g, name1)
+                .replace(/\(الاسم\)/g, name1)
+                .replace(/\[الاسم\]/g, name1);
             await message.channel.send(`**السؤال 6/6:**\n${q6Text}`);
         } else if (step === 6) {
-            // دالة تنظيف متطورة ومرنة جداً لتجاهل الفروقات البسيطة والتشكيل والأقواس والمسافات
+            const name1 = ticketData.answers[1];
+            let template = questions[6];
+
+            // استبدال كلمة الاسم أو (الاسم) في القالب بقيمة اسم العضو الفعلية للتحقق
+            let expectedRaw = template
+                .replace(/الاسم/g, name1)
+                .replace(/\(الاسم\)/g, name1)
+                .replace(/\[الاسم\]/g, name1);
+
+            // دالة تنظيف متطورة لتجاهل الفروقات والمسافات والهمزات والأقواس
             const cleanText = (str) => {
                 return str
                     .replace(/[إأآٱ]/g, 'ا')
                     .replace(/ة/g, 'ه')
-                    .replace(/[()\[\]{}""''«»]/g, ' ') // استبدال الأقواس والرموز بمسافة لتجنب الالتصاق
+                    .replace(/[()\[\]{}""''«»]/g, ' ')
                     .replace(/\s+/g, ' ')
                     .trim();
             };
 
-            const name1 = ticketData.answers[1];
-            let template = questions[6];
-
-            // استبدال كلمة الاسم أو (الاسم) في القالب المخصص بقيمة اسم العضو الفعلية
-            let expectedRaw = template
-                .replace(/الاسم/g, name1)
-                .replace(/\(الاسم\)/g, name1);
-
             const userClean = cleanText(message.content);
             const expectedClean = cleanText(expectedRaw);
             
-            // تحقق مرن جداً: نقوم بمقارنة الكلمات الأساسية بغض النظر عن الأقواس أو الهمزات الإضافية
-            // أو يمكننا الاكتفاء بالتنظيف الشامل. للتأكيد بنسبة 100% سنقبل النص إذا تطابق التنظيف أو تقاربت محتواه
+            // تحقق مرن يقارن النص بعد استبدال الاسم وتوحيد المسافات
             if (userClean !== expectedClean) {
-                return message.reply("خطأ! يرجى كتابة نص الحلف بشكل صحيح مع التأكد من إدخال اسمك كما طلب منك ❌");
+                return message.reply("خطأ! يرجى كتابة نص الحلف بشكل صحيح مع وضع اسمك تماماً كما طلب منك ❌");
             }
 
             ticketData.answers[6] = message.content;
@@ -315,6 +324,24 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply({ content: "تم تحديث بنر التفعيل بنجاح! ✅", ephemeral: true });
         }
 
+        if (commandName === 'set-ticket-embed') {
+            if (!member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+                return interaction.reply({ content: "عذراً، هذا الأمر للإدارة فقط! ❌", ephemeral: true });
+            }
+            const ticketText = interaction.options.getString('text');
+            saveGuildConfig(guild.id, { ticketEmbedText: ticketText });
+            return interaction.reply({ content: "تم تحديث نص إمبد فتح التذكرة بنجاح! ✅", ephemeral: true });
+        }
+
+        if (commandName === 'set-button-text') {
+            if (!member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+                return interaction.reply({ content: "عذراً، هذا الأمر للإدارة فقط! ❌", ephemeral: true });
+            }
+            const btnText = interaction.options.getString('text');
+            saveGuildConfig(guild.id, { verifyButtonText: btnText });
+            return interaction.reply({ content: "تم تحديث نص زر فتح التذكرة بنجاح! ✅", ephemeral: true });
+        }
+
         if (commandName === 'set-question') {
             if (!member.permissions.has(PermissionsBitField.Flags.Administrator)) {
                 return interaction.reply({ content: "عذراً، هذا الأمر للإدارة فقط! ❌", ephemeral: true });
@@ -358,10 +385,11 @@ client.on('interactionCreate', async interaction => {
                 .setTitle(embedTitle)
                 .setDescription(embedDesc);
 
+            const buttonLabel = config.verifyButtonText || 'فتح تذكرة تفعيل ✅️';
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder()
                     .setCustomId('open_ticket')
-                    .setLabel('فتح تذكرة تفعيل ✅️')
+                    .setLabel(buttonLabel)
                     .setStyle(ButtonStyle.Success)
             );
 
@@ -448,10 +476,11 @@ client.on('interactionCreate', async interaction => {
             permissionOverwrites: overwrites,
         });
 
+        const ticketMsgText = config.ticketEmbedText || "انت الان بـ الأسئلة التفاعلية لـ التفعيل قم بـ الإجابة عليها 💞.";
         const embed = new EmbedBuilder()
             .setColor(0x00FF00)
             .setTitle(`تم فتح تذكرة تفعيل ✅ - ${config.serverDecoration || ''}`)
-            .setDescription("انت الان بـ الأسئلة التفاعلية لـ التفعيل قم بـ الإجابة عليها 💞.");
+            .setDescription(ticketMsgText);
 
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('ticket_options').setLabel('خيارات التذكرة ⚙').setStyle(ButtonStyle.Primary),
