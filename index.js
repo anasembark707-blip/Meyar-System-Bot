@@ -82,6 +82,15 @@ const client = new Client({
 const staffPoints = new Map(); 
 const activeTickets = new Map(); 
 
+// حماية عالمية لمنع انهيار البوت نهائياً في حال حدوث خطأ غير متوقع
+process.on('uncaughtException', error => {
+    console.error('An uncaught exception occurred:', error);
+});
+
+process.on('unhandledRejection', error => {
+    console.error('An unhandled promise rejection occurred:', error);
+});
+
 client.once('ready', async () => {
     console.log(`تم تسجيل الدخول بنجاح باسم ${client.user.tag}! البوت العام جاهز.`);
 
@@ -98,10 +107,16 @@ client.once('ready', async () => {
                 option.setName('staff-role').setDescription('رتبة الفريق الإداري (المسؤولون عن التذاكر)').setRequired(true))
             .addRoleOption(option => 
                 option.setName('supervisor-role').setDescription('رتبة الإشراف العامة التنفيذية').setRequired(true))
+            .addRoleOption(option => 
+                option.setName('verified-role').setDescription('رتبة التفعيل التي ستُمنح للعضو عند القبول').setRequired(true))
+            .addRoleOption(option => 
+                option.setName('unverified-role').setDescription('رتبة الانتظار/المؤقتة التي ستُزال عن العضو عند القبول').setRequired(true))
             .addChannelOption(option => 
                 option.setName('log-channel').setDescription('روم السجلات (Log)').setRequired(true))
             .addChannelOption(option => 
-                option.setName('category-tickets').setDescription('قسم (Category) التذاكر').setRequired(true)),
+                option.setName('category-tickets').setDescription('قسم (Category) التذاكر').setRequired(true))
+            .addStringOption(option => 
+                option.setName('server-decoration').setDescription('زخرفة أو اسم السيرفر لتخصيص البنر والرسائل').setRequired(true)),
         new SlashCommandBuilder()
             .setName('setup-verify')
             .setDescription('إرسال بنر فتح تذكرة التفعيل الإداري في الروم الحالي'),
@@ -139,7 +154,7 @@ client.once('ready', async () => {
 });
 
 client.on('messageCreate', async message => {
-    if (message.author.bot) return;
+    if (message.author.bot || !message.guild) return;
 
     const ticketData = activeTickets.get(message.channel.id);
     if (ticketData && message.author.id === ticketData.userId) {
@@ -151,7 +166,8 @@ client.on('messageCreate', async message => {
 
         const step = ticketData.step;
         const config = getGuildConfig(message.guild.id);
-        const questions = config && config.questions ? config.questions : defaultQuestions;
+        if (!config) return;
+        const questions = config.questions || defaultQuestions;
 
         if (step === 1) {
             ticketData.answers[1] = message.content;
@@ -195,7 +211,7 @@ client.on('messageCreate', async message => {
                 return str
                     .replace(/[إأآٱ]/g, 'ا')
                     .replace(/ة/g, 'ه')
-                    .replace(/[()]/g, '') // إزالة الأقواس لتصبح مرنة سواء كتبها أو لا
+                    .replace(/[()]/g, '')
                     .replace(/\s+/g, ' ')
                     .trim();
             };
@@ -219,7 +235,7 @@ client.on('messageCreate', async message => {
 
             const reviewEmbed = new EmbedBuilder()
                 .setColor(0x00FFFF)
-                .setTitle("قبول ✅ أو رفض ❌ طلب التفعيل")
+                .setTitle(`قبول ✅ أو رفض ❌ طلب التفعيل - ${config.serverDecoration || ''}`)
                 .setDescription(
                     `١ الإجابة : ${ticketData.answers[1]}\n` +
                     `٢ الإجابة : ${ticketData.answers[2]}\n` +
@@ -244,6 +260,8 @@ client.on('messageCreate', async message => {
 });
 
 client.on('interactionCreate', async interaction => {
+    if (!interaction.guild) return;
+
     if (interaction.isChatInputCommand()) {
         const { commandName, member, guild, channel } = interaction;
 
@@ -254,18 +272,24 @@ client.on('interactionCreate', async interaction => {
 
             const staffRole = interaction.options.getRole('staff-role');
             const supervisorRole = interaction.options.getRole('supervisor-role');
+            const verifiedRole = interaction.options.getRole('verified-role');
+            const unverifiedRole = interaction.options.getRole('unverified-role');
             const logChannel = interaction.options.getChannel('log-channel');
             const categoryTickets = interaction.options.getChannel('category-tickets');
+            const serverDecoration = interaction.options.getString('server-decoration');
 
             saveGuildConfig(guild.id, {
                 staffRoleId: staffRole.id,
                 supervisorRoleId: supervisorRole.id,
+                verifiedRoleId: verifiedRole.id,
+                unverifiedRoleId: unverifiedRole.id,
                 logChannelId: logChannel.id,
-                categoryTicketsId: categoryTickets.id
+                categoryTicketsId: categoryTickets.id,
+                serverDecoration: serverDecoration
             });
 
             return interaction.reply({ 
-                content: `تم حفظ إعدادات السيرفر العامة بنجاح! ✅\n- الفريق الإداري: <@&${staffRole.id}>\n- الإشراف التنفيذي: <@&${supervisorRole.id}>\n- روم اللوج: <#${logChannel.id}>`, 
+                content: `تم حفظ إعدادات السيرفر العامة بنجاح! ✅\n- زخرفة السيرفر: **${serverDecoration}**\n- الفريق الإداري: <@&${staffRole.id}>\n- الإشراف التنفيذي: <@&${supervisorRole.id}>\n- رتبة التفعيل الممنوحة: <@&${verifiedRole.id}>\n- رتبة الانتظار المُزالة: <@&${unverifiedRole.id}>\n- روم اللوج: <#${logChannel.id}>`, 
                 ephemeral: true 
             });
         }
@@ -309,17 +333,18 @@ client.on('interactionCreate', async interaction => {
             }
 
             const config = getGuildConfig(guild.id);
-            if (!config) {
+            if (!config || !config.staffRoleId) {
                 return interaction.reply({ content: "تنبيه! لم يتم ضبط إعدادات السيرفر بعد. يرجى استخدام أمر `/set-system` أولاً ⚠️", ephemeral: true });
             }
 
             await interaction.deferReply({ ephemeral: true });
 
-            const embedTitle = config.bannerTitle || "من هنا يمكنكم العب والتفعيل معنا 💞.";
+            const decoration = config.serverDecoration ? `[ ${config.serverDecoration} ]` : "";
+            const embedTitle = config.bannerTitle || `من هنا يمكنكم اللعب والتفعيل معنا 💞 ${decoration}`;
             const embedDesc = config.bannerDesc || (
-                "فتح تذكرة ل تقديم على رتبة تصريح لعب 🎮\n\n" +
+                "فتح تذكرة لتقديم على رتبة تصريح لعب 🎮\n\n" +
                 "يمكنك من خلالها لعب الرولات معنا 🤝🏼\n\n" +
-                "قم فقط ب الإجابة على الأسئلة التفاعليه 🤍.\n\n" +
+                "قم فقط بالإجابة على الأسئلة التفاعلية 🤍.\n\n" +
                 "وشكرا لكم...💞"
             );
 
@@ -341,7 +366,10 @@ client.on('interactionCreate', async interaction => {
 
         if (commandName === 'pointict') {
             const config = getGuildConfig(guild.id);
-            if (!config || (!member.roles.cache.has(config.staffRoleId) && !member.roles.cache.has(config.supervisorRoleId))) {
+            if (!config || !config.staffRoleId) {
+                return interaction.reply({ content: "عذراً، لم يتم إعداد البوت في هذا السيرفر ❌", ephemeral: true });
+            }
+            if (!member.roles.cache.has(config.staffRoleId) && !member.roles.cache.has(config.supervisorRoleId)) {
                 if (!member.permissions.has(PermissionsBitField.Flags.Administrator)) {
                     return interaction.reply({ content: "عذراً، هذا الأمر للفريق الإداري والمشرفين فقط! ❌", ephemeral: true });
                 }
@@ -354,7 +382,7 @@ client.on('interactionCreate', async interaction => {
 
             const embed = new EmbedBuilder()
                 .setColor(0x00FF00)
-                .setTitle("نقاط تذكرة التفعيل")
+                .setTitle(`نقاط تذكرة التفعيل - ${config.serverDecoration || ''}`)
                 .setDescription(desc);
 
             return interaction.reply({ embeds: [embed], ephemeral: true });
@@ -374,19 +402,20 @@ client.on('interactionCreate', async interaction => {
     const { customId, channel, guild, member, user } = interaction;
     const config = getGuildConfig(guild.id);
 
-    if (customId === 'open_ticket') {
-        if (!config) {
-            return interaction.reply({ content: "عذراً، لم يقم صاحب السيرفر بإعداد البوت بعد (استخدموا /set-system) ❌", ephemeral: true });
-        }
+    // حماية ضد تفاعل الأزرار في سيرفر لم يقم بالإعداد
+    if (!config || !config.staffRoleId) {
+        return interaction.reply({ content: "عذراً، لم يقم صاحب السيرفر بإعداد البوت بعد (استخدموا /set-system) ❌", ephemeral: true });
+    }
 
-        const existingTicket = [...activeTickets.values()].find(t => t.userId === user.id);
+    if (customId === 'open_ticket') {
+        const existingTicket = [...activeTickets.values()].find(t => t.userId === user.id && t.guildId === guild.id);
         if (existingTicket) {
             return interaction.reply({ content: "عذراً، لديك تذكرة تفعيل مفتوحة مسبقاً! ❌", ephemeral: true });
         }
 
         await interaction.deferReply({ ephemeral: true });
 
-        const ticketName = `Ticket-${user.username}`;
+        const ticketName = `ticket-${user.username}`;
         
         const overwrites = [
             {
@@ -417,7 +446,7 @@ client.on('interactionCreate', async interaction => {
 
         const embed = new EmbedBuilder()
             .setColor(0x00FF00)
-            .setTitle("تم فتح تذكرة تفعيل ✅.")
+            .setTitle(`تم فتح تذكرة تفعيل ✅ - ${config.serverDecoration || ''}`)
             .setDescription("انت الان بـ الأسئلة التفاعلية لـ التفعيل قم بـ الإجابة عليها 💞.");
 
         const row = new ActionRowBuilder().addComponents(
@@ -433,6 +462,7 @@ client.on('interactionCreate', async interaction => {
         });
 
         activeTickets.set(ticketChannel.id, {
+            guildId: guild.id,
             userId: user.id,
             step: 1,
             answers: {},
@@ -447,7 +477,7 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (customId === 'claim_ticket') {
-        if (!config || (!member.roles.cache.has(config.staffRoleId) && !member.roles.cache.has(config.supervisorRoleId))) {
+        if (!member.roles.cache.has(config.staffRoleId) && !member.roles.cache.has(config.supervisorRoleId)) {
             return interaction.reply({ content: "هذا الزر خاص بالفريق الإداري والمشرفين فقط! ❌", ephemeral: true });
         }
 
@@ -480,7 +510,7 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (customId === 'close_ticket') {
-        if (!config || (!member.roles.cache.has(config.staffRoleId) && !member.roles.cache.has(config.supervisorRoleId))) {
+        if (!member.roles.cache.has(config.staffRoleId) && !member.roles.cache.has(config.supervisorRoleId)) {
             return interaction.reply({ content: "هذا الزر خاص بالفريق الإداري والمشرفين فقط! ❌", ephemeral: true });
         }
 
@@ -558,14 +588,25 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (customId === 'accept_ticket') {
-        if (!config || (!member.roles.cache.has(config.staffRoleId) && !member.roles.cache.has(config.supervisorRoleId))) {
+        if (!member.roles.cache.has(config.staffRoleId) && !member.roles.cache.has(config.supervisorRoleId)) {
             return interaction.reply({ content: "عذراً، أزرار القبول والرفض خاصة بالفريق الإداري والمشرفين فقط! ❌", ephemeral: true });
         }
 
         const ticketData = activeTickets.get(channel.id);
         if (!ticketData) return;
 
-        await channel.send("تم قبول الطلب ✅. سيتم إغلاق التذكرة خلال لحظات...");
+        // منح رتبة التفعيل وإزالة رتبة الانتظار للعضو تلقائياً عند القبول
+        try {
+            const targetMember = await guild.members.fetch(ticketData.userId);
+            if (targetMember) {
+                if (config.verifiedRoleId) await targetMember.roles.add(config.verifiedRoleId).catch(() => {});
+                if (config.unverifiedRoleId) await targetMember.roles.remove(config.unverifiedRoleId).catch(() => {});
+            }
+        } catch (err) {
+            console.log("Could not update member roles on accept:", err);
+        }
+
+        await channel.send("تم قبول الطلب ✅ وتحويل الرتب بنجاح. سيتم إغلاق التذكرة خلال لحظات...");
         
         if (config.logChannelId) {
             const logChan = guild.channels.cache.get(config.logChannelId);
@@ -610,7 +651,7 @@ client.on('interactionCreate', async interaction => {
 </head>
 <body>
     <div class="header">
-        <h2>📂 سجل محادثة التذكرة (مقبولة)</h2>
+        <h2>📂 سجل محادثة التذكرة (مقبولة) - ${config.serverDecoration || ''}</h2>
         <p><strong>اسم الروم:</strong> ${channel.name} | <strong>صاحب التذكرة ID:</strong> ${ticketData.userId} | <strong>الإداري المسؤول:</strong> ${user.tag}</p>
     </div>
     <div class="chat-container">`;
@@ -653,7 +694,7 @@ client.on('interactionCreate', async interaction => {
 
                 const logEmbed = new EmbedBuilder()
                     .setColor(0x00FF00)
-                    .setTitle("سجل قبول تفعيل جديد ✅")
+                    .setTitle(`سجل قبول تفعيل جديد ✅ - ${config.serverDecoration || ''}`)
                     .setDescription(
                         `**الإداري المسؤول:** <@${user.id}> (أيدي: \`${user.id}\`)\n` +
                         `**العضو صاحب التذكرة:** <@${ticketData.userId}>\n` +
@@ -678,7 +719,7 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (customId === 'reject_ticket') {
-        if (!config || (!member.roles.cache.has(config.staffRoleId) && !member.roles.cache.has(config.supervisorRoleId))) {
+        if (!member.roles.cache.has(config.staffRoleId) && !member.roles.cache.has(config.supervisorRoleId)) {
             return interaction.reply({ content: "عذراً، أزرار القبول والرفض خاصة بالفريق الإداري والمشرفين فقط! ❌", ephemeral: true });
         }
 
@@ -730,7 +771,7 @@ client.on('interactionCreate', async interaction => {
 </head>
 <body>
     <div class="header">
-        <h2>📂 سجل محادثة التذكرة (مرفوضة)</h2>
+        <h2>📂 سجل محادثة التذكرة (مرفوضة) - ${config.serverDecoration || ''}</h2>
         <p><strong>اسم الروم:</strong> ${channel.name} | <strong>صاحب التذكرة ID:</strong> ${ticketData.userId} | <strong>الإداري المسؤول:</strong> ${user.tag}</p>
     </div>
     <div class="chat-container">`;
@@ -773,7 +814,7 @@ client.on('interactionCreate', async interaction => {
 
                 const logEmbed = new EmbedBuilder()
                     .setColor(0xFF0000)
-                    .setTitle("سجل رفض تفعيل جديد ❌")
+                    .setTitle(`سجل رفض تفعيل جديد ❌ - ${config.serverDecoration || ''}`)
                     .setDescription(
                         `**الإداري المسؤول:** <@${user.id}> (أيدي: \`${user.id}\`)\n` +
                         `**العضو صاحب التذكرة:** <@${ticketData.userId}>\n` +
