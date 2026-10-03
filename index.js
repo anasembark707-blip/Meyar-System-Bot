@@ -36,7 +36,7 @@ const defaultQuestions = {
     3: "يوزرك روبلوكس؟ (إنجليزي فقط)",
     4: "صورة بروفايلك روبلوكس؟ (أرسل صورة)",
     5: "صورة دخولك القروب؟\nرابط قروبنا (16) 📎 : [اضغط هنا](https://www.roblox.com/share/g/387192545)\n(أرسل صورة إثبات الدخول)",
-    6: "الحلف:\nانا اقر الاسم واقسم بالله اني ما اخرب اي رول وما استخدم اي رتبه ل تشويه سمعة السيرفر وما استخدم اي صلاحية لضرر أو لمصالح شخصية\n*(يرجى كتابة الحلف بالنص تماماً مع اسمك بدون أقواس)*"
+    6: "الحلف:\nانا اقر (الاسم) واقسم بالله اني ما اخرب اي رول وما استخدم اي رتبه ل تشويه سمعة السيرفر وما استخدم اي صلاحية لضرر أو لمصالح شخصية\n*(يرجى كتابة الحلف بالنص تماماً مع وضع اسمك بين أقواس)*"
 };
 
 function getGuildConfig(guildId) {
@@ -97,7 +97,7 @@ client.once('ready', async () => {
             .addRoleOption(option => 
                 option.setName('staff-role').setDescription('رتبة الفريق الإداري (المسؤولون عن التذاكر)').setRequired(true))
             .addRoleOption(option => 
-                option.setName('supervisor-role').setDescription('رتبة الإشراف العامة').setRequired(true))
+                option.setName('supervisor-role').setDescription('رتبة الإشراف العامة التنفيذية').setRequired(true))
             .addChannelOption(option => 
                 option.setName('log-channel').setDescription('روم السجلات (Log)').setRequired(true))
             .addChannelOption(option => 
@@ -188,7 +188,7 @@ client.on('messageCreate', async message => {
             ticketData.step = 6;
             
             const name1 = ticketData.answers[1];
-            let q6Text = questions[6].replace('الاسم', name1).replace('(الاسم)', name1);
+            let q6Text = questions[6].replace('الاسم', `(${name1})`).replace('(الاسم)', `(${name1})`);
             await message.channel.send(`**السؤال 6/6:**\n${q6Text}`);
         } else if (step === 6) {
             const cleanText = (str) => {
@@ -201,14 +201,17 @@ client.on('messageCreate', async message => {
             };
 
             const name1 = ticketData.answers[1];
-            let template = questions[6].replace('الاسم', '(الاسم)').replace('(الاسم)', '(الاسم)');
-            let expectedRaw = template.replace('(الاسم)', name1);
+            
+            let template = questions[6];
+            let expectedRaw = template
+                .replace(/الاسم/g, `(${name1})`)
+                .replace(/\(الاسم\)/g, `(${name1})`);
 
             const userClean = cleanText(message.content);
             const expectedClean = cleanText(expectedRaw);
             
             if (userClean !== expectedClean) {
-                return message.reply("خطأ! الحلف غير مطابق تماماً لما طلب منك، تأكد من كتابة اسمك بشكل صحيح وعدم وجود أخطاء إملائية ❌");
+                return message.reply("خطأ! الحلف غير مطابق تماماً لما طلب منك، تأكد من كتابة اسمك بين أقواس بشكل صحيح وعدم وجود أخطاء في الكلمات ❌");
             }
 
             ticketData.answers[6] = message.content;
@@ -262,7 +265,7 @@ client.on('interactionCreate', async interaction => {
             });
 
             return interaction.reply({ 
-                content: `تم حفظ إعدادات السيرفر العامة بنجاح! ✅\n- الفريق الإداري: <@&${staffRole.id}>\n- الإشراف العامة: <@&${supervisorRole.id}>\n- روم اللوج: <#${logChannel.id}>`, 
+                content: `تم حفظ إعدادات السيرفر العامة بنجاح! ✅\n- الفريق الإداري: <@&${staffRole.id}>\n- الإشراف التنفيذي: <@&${supervisorRole.id}>\n- روم اللوج: <#${logChannel.id}>`, 
                 ephemeral: true 
             });
         }
@@ -385,7 +388,6 @@ client.on('interactionCreate', async interaction => {
 
         const ticketName = `Ticket-${user.username}`;
         
-        // إعداد الصلاحيات: الفريق الإداري يقدر يكتب، ورتبة الإشراف العام تشوف التذكرة بدون كتابة أو إزعاج
         const overwrites = [
             {
                 id: guild.id,
@@ -397,12 +399,12 @@ client.on('interactionCreate', async interaction => {
             },
             {
                 id: config.staffRoleId,
-                allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory],
+                allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.ReadMessageHistory],
+                deny: [PermissionsBitField.Flags.SendMessages]
             },
             {
                 id: config.supervisorRoleId,
-                allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.ReadMessageHistory],
-                deny: [PermissionsBitField.Flags.SendMessages]
+                allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory]
             }
         ];
 
@@ -424,7 +426,6 @@ client.on('interactionCreate', async interaction => {
             new ButtonBuilder().setCustomId('claim_ticket').setLabel('استلام التذكرة ✅').setStyle(ButtonStyle.Success)
         );
 
-        // المنشن هنا صار لفريق الإدارة وصاحب التذكرة فقط (بدون منشن الإشراف العام)
         await ticketChannel.send({
             content: `<@&${config.staffRoleId}> | <@${user.id}>`,
             embeds: [embed],
@@ -458,7 +459,7 @@ client.on('interactionCreate', async interaction => {
         if (ticketData) ticketData.claimedBy = user.id;
 
         await channel.permissionOverwrites.edit(config.staffRoleId, {
-            SendMessages: false,
+            SendMessages: true,
             ViewChannel: true
         }).catch(() => {});
 
@@ -500,13 +501,13 @@ client.on('interactionCreate', async interaction => {
             staffPoints.set(user.id, Math.max(0, currentPoints - 1));
 
             await channel.permissionOverwrites.edit(config.staffRoleId, {
-                SendMessages: true,
+                SendMessages: false,
                 ViewChannel: true
             }).catch(() => {});
 
             await channel.permissionOverwrites.delete(user.id).catch(() => {});
 
-            await channel.send(`**ترك التذكرة 🚫**\nالإداري المستلم ترك التذكرة <@${user.id}>\nتم خصم نقطة واحدة منك، وتم مسح صلاحيتك الخاصة وإعادة فتح الكتابة للفريق الإداري.`);
+            await channel.send(`**ترك التذكرة 🚫**\nالإداري المستلم ترك التذكرة <@${user.id}>\nتم خصم نقطة واحدة منك، وتم مسح صلاحيتك الخاصة وإعادة قفل الكتابة للفريق الإداري.`);
             
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId('claim_ticket').setLabel('استلام التذكرة ✅️').setStyle(ButtonStyle.Success)
