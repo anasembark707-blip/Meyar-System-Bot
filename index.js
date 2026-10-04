@@ -21,7 +21,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.get('/', (req, res) => {
-    res.send('Public Abu Ghamdah System Bot is alive and running! 🚀');
+    res.send('Meyar System Bot is alive and running! 🚀');
 });
 
 app.listen(PORT, () => {
@@ -30,24 +30,11 @@ app.listen(PORT, () => {
 
 const dbPath = path.join(__dirname, 'database.json');
 
-const defaultQuestions = {
-    1: "ما هو اسمك؟",
-    2: "عمرك؟ (اجباري أرقام فقط)",
-    3: "يوزرك روبلوكس؟ (إنجليزي فقط)",
-    4: "صورة بروفايلك روبلوكس؟ (أرسل صورة)",
-    5: "صورة دخولك القروب؟\nرابط قروبنا (16) 📎 : [اضغط هنا](https://www.roblox.com/share/g/387192545)\n(أرسل صورة إثبات الدخول)",
-    6: "الحلف:\nانا اقر (الاسم) واقسم بالله اني ما اخرب اي رول وما استخدم اي رتبه ل تشويه سمعة السيرفر وما استخدم اي صلاحية لضرر أو لمصالح شخصية\n*(يرجى كتابة الحلف بالنص تماماً مع وضع اسمك بين أقواس)*"
-};
-
 function getGuildConfig(guildId) {
     if (!fs.existsSync(dbPath)) return null;
     try {
         const data = JSON.parse(fs.readFileSync(dbPath, 'utf8'));
-        const config = data[guildId] || null;
-        if (config && !config.questions) {
-            config.questions = { ...defaultQuestions };
-        }
-        return config;
+        return data[guildId] || null;
     } catch (e) {
         return null;
     }
@@ -65,7 +52,7 @@ function saveGuildConfig(guildId, newConfig) {
     data[guildId] = { 
         ...(data[guildId] || {}), 
         ...newConfig,
-        questions: newConfig.questions || (data[guildId] && data[guildId].questions) || { ...defaultQuestions }
+        questions: newConfig.questions || (data[guildId] && data[guildId].questions) || {}
     };
     fs.writeFileSync(dbPath, JSON.stringify(data, null, 2), 'utf8');
 }
@@ -81,6 +68,7 @@ const client = new Client({
 
 const staffPoints = new Map(); 
 const activeTickets = new Map(); 
+const buttonCooldowns = new Map(); // لمنع السبام والضغط المتكرر على الأزرار
 
 process.on('uncaughtException', error => {
     console.error('An uncaught exception occurred:', error);
@@ -91,10 +79,10 @@ process.on('unhandledRejection', error => {
 });
 
 client.once('ready', async () => {
-    console.log(`تم تسجيل الدخول بنجاح باسم ${client.user.tag}! البوت العام جاهز.`);
+    console.log(`تم تسجيل الدخول بنجاح باسم ${client.user.tag}! البوت جاهز.`);
 
     client.user.setPresence({
-        activities: [{ name: 'Public System by ابو غمده', type: ActivityType.Watching }],
+        activities: [{ name: 'Meyar System Bot', type: ActivityType.Watching }],
         status: 'online',
     });
 
@@ -134,11 +122,22 @@ client.once('ready', async () => {
             .addStringOption(option => option.setName('text').setDescription('نص الزر الجديد').setRequired(true)),
         new SlashCommandBuilder()
             .setName('set-question')
-            .setDescription('تعديل نص أحد الأسئلة الستة الخاصة بالتفعيل في سيرفرك')
+            .setDescription('إضافة أو تعديل أحد الأسئلة (من 1 إلى 10)')
             .addIntegerOption(option => 
-                option.setName('number').setDescription('رقم السؤال المراد تعديله (من 1 إلى 6)').setRequired(true).setMinValue(1).setMaxValue(6))
+                option.setName('number').setDescription('رقم السؤال (من 1 إلى 10)').setRequired(true).setMinValue(1).setMaxValue(10))
             .addStringOption(option => 
-                option.setName('text').setDescription('نص السؤال الجديد').setRequired(true)),
+                option.setName('text').setDescription('نص السؤال').setRequired(true))
+            .addStringOption(option => 
+                option.setName('condition')
+                .setDescription('شرط السؤال')
+                .setRequired(true)
+                .addChoices(
+                    { name: 'عربي فقط', value: 'arabic' },
+                    { name: 'إنجليزي فقط', value: 'english' },
+                    { name: 'أرقام فقط', value: 'numbers' },
+                    { name: 'صورة فقط', value: 'image' },
+                    { name: 'مطابقة الحلف', value: 'oath' }
+                )),
         new SlashCommandBuilder()
             .setName('pointict')
             .setDescription('عرض نقاط الفريق الإداري في تذاكر التفعيل'),
@@ -154,7 +153,7 @@ client.once('ready', async () => {
             Routes.applicationCommands(client.user.id),
             { body: commands },
         );
-        console.log('تم تسجيل أوامر السلاش (Slash Commands) للبوت العام بنجاح! 🚀');
+        console.log('تم تسجيل أوامر السلاش بنجاح! 🚀');
     } catch (error) {
         console.error('خطأ في تسجيل أوامر السلاش:', error);
     }
@@ -171,62 +170,47 @@ client.on('messageCreate', async message => {
             await message.channel.send("تم الغاء نظام التنبيه ⚠");
         }
 
-        const step = ticketData.step;
         const config = getGuildConfig(message.guild.id);
-        if (!config) return;
-        const questions = config.questions || defaultQuestions;
+        if (!config || !config.questions) return;
+        const questions = config.questions;
 
-        if (step === 1) {
-            ticketData.answers[1] = message.content;
-            ticketData.step = 2;
-            await message.channel.send(`**السؤال 2/6:** ${questions[2]}`);
-        } else if (step === 2) {
+        const questionKeys = Object.keys(questions).map(Number).sort((a, b) => a - b);
+        if (questionKeys.length === 0) return;
+
+        const currentStepIndex = questionKeys.indexOf(ticketData.currentStepNumber);
+        if (currentStepIndex === -1) return;
+
+        const currentQNum = questionKeys[currentStepIndex];
+        const currentQData = questions[currentQNum];
+
+        // التحقق من الشروط بناءً على ما حدده المشرف
+        if (currentQData.condition === 'arabic') {
+            if (!/^[\u0600-\u06FF0-9\s\p{P}]+$/u.test(message.content)) {
+                return message.reply("خطأ! يرجى إدخال أحرف عربية فقط ❌");
+            }
+        } else if (currentQData.condition === 'english') {
+            if (!/^[A-Za-z0-9_\s\p{P}]+$/.test(message.content)) {
+                return message.reply("خطأ! يرجى إدخال أحرف إنجليزية فقط ❌");
+            }
+        } else if (currentQData.condition === 'numbers') {
             if (isNaN(message.content)) {
-                return message.reply("خطأ! عيد أرسل أرقام فقط ❌");
+                return message.reply("خطأ! يرجى إرسال أرقام فقط ❌");
             }
-            ticketData.answers[2] = message.content;
-            ticketData.step = 3;
-            await message.channel.send(`**السؤال 3/6:** ${questions[3]}`);
-        } else if (step === 3) {
-            if (!/^[A-Za-z0-9_]+$/.test(message.content)) {
-                return message.reply("خطأ! يرجى إدخال أحرف إنجليزية وأرقام فقط ❌");
-            }
-            ticketData.answers[3] = message.content;
-            ticketData.step = 4;
-            await message.channel.send(`**السؤال 4/6:** ${questions[4]}`);
-        } else if (step === 4) {
+        } else if (currentQData.condition === 'image') {
             const attachment = message.attachments.first();
             if (!attachment) {
-                return message.reply("خطأ! يجب إرسال صورة بروفايلك ❌");
+                return message.reply("خطأ! يجب إرسال صورة حصرياً ❌");
             }
-            ticketData.answers[4] = attachment.url;
-            ticketData.step = 5;
-            await message.channel.send(`**السؤال 5/6:** ${questions[5]}`);
-        } else if (step === 5) {
-            const attachment = message.attachments.first();
-            if (!attachment) {
-                return message.reply("خطأ! يجب إرسال صورة إثبات دخول القروب ❌");
-            }
-            ticketData.answers[5] = attachment.url;
-            ticketData.step = 6;
-            
-            const name1 = ticketData.answers[1];
-            let q6Text = questions[6]
-                .replace(/الاسم/g, name1)
-                .replace(/\(الاسم\)/g, name1)
-                .replace(/\[الاسم\]/g, name1);
-            await message.channel.send(`**السؤال 6/6:**\n${q6Text}`);
-        } else if (step === 6) {
-            const name1 = ticketData.answers[1];
-            let template = questions[6];
+            ticketData.answers[currentQNum] = attachment.url;
+        } else if (currentQData.condition === 'oath') {
+            const name1 = ticketData.answers[questionKeys[0]]; // السؤال الأول هو المرجع للاسم
+            let template = currentQData.text;
 
-            // استبدال كلمة الاسم أو (الاسم) في القالب بقيمة اسم العضو الفعلية للتحقق
             let expectedRaw = template
                 .replace(/الاسم/g, name1)
                 .replace(/\(الاسم\)/g, name1)
                 .replace(/\[الاسم\]/g, name1);
 
-            // دالة تنظيف متطورة لتجاهل الفروقات والمسافات والهمزات والأقواس
             const cleanText = (str) => {
                 return str
                     .replace(/[إأآٱ]/g, 'ا')
@@ -239,25 +223,43 @@ client.on('messageCreate', async message => {
             const userClean = cleanText(message.content);
             const expectedClean = cleanText(expectedRaw);
             
-            // تحقق مرن يقارن النص بعد استبدال الاسم وتوحيد المسافات
             if (userClean !== expectedClean) {
-                return message.reply("خطأ! يرجى كتابة نص الحلف بشكل صحيح مع وضع اسمك تماماً كما طلب منك ❌");
+                return message.reply("خطأ! يرجى كتابة نص الحلف بشكل صحيح مع وضع اسمك تماماً بين الأقواس كما طلب منك ❌");
             }
+            ticketData.answers[currentQNum] = message.content;
+        }
 
-            ticketData.answers[6] = message.content;
-            ticketData.step = 7;
+        if (currentQData.condition !== 'image' && currentQData.condition !== 'oath') {
+            ticketData.answers[currentQNum] = message.content;
+        }
+
+        // الانتقال للسؤال التالي أو إنهاء الأسئلة
+        const nextIndex = currentStepIndex + 1;
+        if (nextIndex < questionKeys.length) {
+            const nextQNum = questionKeys[nextIndex];
+            ticketData.currentStepNumber = nextQNum;
+            const nextQData = questions[nextQNum];
+            
+            let qText = nextQData.text;
+            if (nextQData.condition === 'oath') {
+                const name1 = ticketData.answers[questionKeys[0]];
+                qText = qText.replace(/الاسم/g, name1).replace(/\(الاسم\)/g, name1).replace(/\[الاسم\]/g, name1);
+            }
+            await message.channel.send(`**السؤال ${nextIndex + 1}/${questionKeys.length}:**\n${qText}`);
+        } else {
+            ticketData.currentStepNumber = null;
+
+            let reviewDesc = "";
+            for (const qNum of questionKeys) {
+                const ans = ticketData.answers[qNum];
+                const isImg = questions[qNum].condition === 'image';
+                reviewDesc += `سؤال ${qNum} : ${isImg ? `[صورة](${ans})` : ans}\n`;
+            }
 
             const reviewEmbed = new EmbedBuilder()
                 .setColor(0x00FFFF)
                 .setTitle(`قبول ✅ أو رفض ❌ طلب التفعيل - ${config.serverDecoration || ''}`)
-                .setDescription(
-                    `١ الإجابة : ${ticketData.answers[1]}\n` +
-                    `٢ الإجابة : ${ticketData.answers[2]}\n` +
-                    `٣ الإجابة : ${ticketData.answers[3]}\n` +
-                    `٤ الإجابة : [صورة](${ticketData.answers[4]})\n` +
-                    `٥ الإجابة : [صورة](${ticketData.answers[5]})\n` +
-                    `٦ الإجابة : ${ticketData.answers[6]}`
-                );
+                .setDescription(reviewDesc);
 
             const actionRow = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId('accept_ticket').setLabel('قبول الطلب ✅️').setStyle(ButtonStyle.Success),
@@ -265,7 +267,7 @@ client.on('messageCreate', async message => {
             );
 
             await message.channel.send({
-                content: `انتهى العضو من الأسئلة التفاعلية! ينتظر قرار الإدارة:`,
+                content: `انتهى العضو من كافة الأسئلة التفاعلية! ينتظر قرار الإدارة:`,
                 embeds: [reviewEmbed],
                 components: [actionRow]
             });
@@ -303,7 +305,7 @@ client.on('interactionCreate', async interaction => {
             });
 
             return interaction.reply({ 
-                content: `تم حفظ إعدادات السيرفر العامة بنجاح! ✅\n- زخرفة السيرفر: **${serverDecoration}**\n- الفريق الإداري: <@&${staffRole.id}>\n- الإشراف التنفيذي: <@&${supervisorRole.id}>\n- رتبة التفعيل الممنوحة: <@&${verifiedRole.id}>\n- رتبة الانتظار المُزالة: <@&${unverifiedRole.id}>\n- روم اللوج: <#${logChannel.id}>`, 
+                content: `تم حفظ إعدادات السيرفر العامة بنجاح! ✅\n- زخرفة السيرفر: **${serverDecoration}**`, 
                 ephemeral: true 
             });
         }
@@ -313,12 +315,9 @@ client.on('interactionCreate', async interaction => {
                 return interaction.reply({ content: "عذراً، هذا الأمر للإدارة فقط! ❌", ephemeral: true });
             }
 
-            const customTitle = interaction.options.getString('title');
-            const customDesc = interaction.options.getString('description');
-
             saveGuildConfig(guild.id, {
-                bannerTitle: customTitle,
-                bannerDesc: customDesc
+                bannerTitle: interaction.options.getString('title'),
+                bannerDesc: interaction.options.getString('description')
             });
 
             return interaction.reply({ content: "تم تحديث بنر التفعيل بنجاح! ✅", ephemeral: true });
@@ -328,8 +327,7 @@ client.on('interactionCreate', async interaction => {
             if (!member.permissions.has(PermissionsBitField.Flags.Administrator)) {
                 return interaction.reply({ content: "عذراً، هذا الأمر للإدارة فقط! ❌", ephemeral: true });
             }
-            const ticketText = interaction.options.getString('text');
-            saveGuildConfig(guild.id, { ticketEmbedText: ticketText });
+            saveGuildConfig(guild.id, { ticketEmbedText: interaction.options.getString('text') });
             return interaction.reply({ content: "تم تحديث نص إمبد فتح التذكرة بنجاح! ✅", ephemeral: true });
         }
 
@@ -337,8 +335,7 @@ client.on('interactionCreate', async interaction => {
             if (!member.permissions.has(PermissionsBitField.Flags.Administrator)) {
                 return interaction.reply({ content: "عذراً، هذا الأمر للإدارة فقط! ❌", ephemeral: true });
             }
-            const btnText = interaction.options.getString('text');
-            saveGuildConfig(guild.id, { verifyButtonText: btnText });
+            saveGuildConfig(guild.id, { verifyButtonText: interaction.options.getString('text') });
             return interaction.reply({ content: "تم تحديث نص زر فتح التذكرة بنجاح! ✅", ephemeral: true });
         }
 
@@ -349,14 +346,15 @@ client.on('interactionCreate', async interaction => {
 
             const qNum = interaction.options.getInteger('number');
             const qText = interaction.options.getString('text');
+            const qCond = interaction.options.getString('condition');
 
             const config = getGuildConfig(guild.id) || {};
-            const currentQuestions = config.questions || { ...defaultQuestions };
-            currentQuestions[qNum] = qText;
+            const currentQuestions = config.questions || {};
+            currentQuestions[qNum] = { text: qText, condition: qCond };
 
             saveGuildConfig(guild.id, { questions: currentQuestions });
 
-            return interaction.reply({ content: `تم تحديث السؤال رقم (${qNum}) بنجاح! ✅`, ephemeral: true });
+            return interaction.reply({ content: `تم حفظ السؤال رقم (${qNum}) بنجاح مع شرط (${qCond})! ✅`, ephemeral: true });
         }
 
         if (commandName === 'setup-verify') {
@@ -369,16 +367,15 @@ client.on('interactionCreate', async interaction => {
                 return interaction.reply({ content: "تنبيه! لم يتم ضبط إعدادات السيرفر بعد. يرجى استخدام أمر `/set-system` أولاً ⚠️", ephemeral: true });
             }
 
+            if (!config.questions || Object.keys(config.questions).length === 0) {
+                return interaction.reply({ content: "خطأ! لا توجد أي أسئلة مضافة. يرجى إضافة الأسئلة أولاً عبر أمر `/set-question` قبل إرسال البنر ❌", ephemeral: true });
+            }
+
             await interaction.deferReply({ ephemeral: true });
 
             const decoration = config.serverDecoration ? `[ ${config.serverDecoration} ]` : "";
-            const embedTitle = config.bannerTitle || `من هنا يمكنكم اللعب والتفعيل معنا 💞 ${decoration}`;
-            const embedDesc = config.bannerDesc || (
-                "فتح تذكرة لتقديم على رتبة تصريح لعب 🎮\n\n" +
-                "يمكنك من خلالها لعب الرولات معنا 🤝🏼\n\n" +
-                "قم فقط بالإجابة على الأسئلة التفاعلية 🤍.\n\n" +
-                "وشكرا لكم...💞"
-            );
+            const embedTitle = config.bannerTitle || `من هنا يمكنكم التفعيل معنا 💞 ${decoration}`;
+            const embedDesc = config.bannerDesc || "فتح تذكرة لتقديم على رتبة التفعيل 🎮";
 
             const embed = new EmbedBuilder()
                 .setColor(0x00FF00)
@@ -401,11 +398,6 @@ client.on('interactionCreate', async interaction => {
             const config = getGuildConfig(guild.id);
             if (!config || !config.staffRoleId) {
                 return interaction.reply({ content: "عذراً، لم يتم إعداد البوت في هذا السيرفر ❌", ephemeral: true });
-            }
-            if (!member.roles.cache.has(config.staffRoleId) && !member.roles.cache.has(config.supervisorRoleId)) {
-                if (!member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-                    return interaction.reply({ content: "عذراً، هذا الأمر للفريق الإداري والمشرفين فقط! ❌", ephemeral: true });
-                }
             }
             
             const sortedPoints = [...staffPoints.entries()].sort((a, b) => b[1] - a[1]);
@@ -436,10 +428,26 @@ client.on('interactionCreate', async interaction => {
     const config = getGuildConfig(guild.id);
 
     if (!config || !config.staffRoleId) {
-        return interaction.reply({ content: "عذراً، لم يقم صاحب السيرفر بإعداد البوت بعد (استخدموا /set-system) ❌", ephemeral: true });
+        return interaction.reply({ content: "عذراً، لم يقم صاحب السيرفر بإعداد البوت بعد ❌", ephemeral: true });
     }
 
+    // نظام حماية السبام للأزرار (Cooldown)
+    const cooldownKey = `${user.id}_${customId}`;
+    const now = Date.now();
+    if (buttonCooldowns.has(cooldownKey)) {
+        const expirationTime = buttonCooldowns.get(cooldownKey);
+        if (now < expirationTime) {
+            const timeLeft = Math.ceil((expirationTime - now) / 1000);
+            return interaction.reply({ content: `الرجاء الانتظار ${timeLeft} ثانية قبل استخدام هذا الزر مرة أخرى لتجنب السبام ⚠️`, ephemeral: true });
+        }
+    }
+    buttonCooldowns.set(cooldownKey, now + 15000); // 15 ثانية كوداون
+
     if (customId === 'open_ticket') {
+        if (!config.questions || Object.keys(config.questions).length === 0) {
+            return interaction.reply({ content: "عذراً، لم تقم الإدارة بإضافة أسئلة التفعيل بعد! ❌", ephemeral: true });
+        }
+
         const existingTicket = [...activeTickets.values()].find(t => t.userId === user.id && t.guildId === guild.id);
         if (existingTicket) {
             return interaction.reply({ content: "عذراً، لديك تذكرة تفعيل مفتوحة مسبقاً! ❌", ephemeral: true });
@@ -450,23 +458,10 @@ client.on('interactionCreate', async interaction => {
         const ticketName = `ticket-${user.username}`;
         
         const overwrites = [
-            {
-                id: guild.id,
-                deny: [PermissionsBitField.Flags.ViewChannel],
-            },
-            {
-                id: user.id,
-                allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory],
-            },
-            {
-                id: config.staffRoleId,
-                allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.ReadMessageHistory],
-                deny: [PermissionsBitField.Flags.SendMessages]
-            },
-            {
-                id: config.supervisorRoleId,
-                allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory]
-            }
+            { id: guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
+            { id: user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
+            { id: config.staffRoleId, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.ReadMessageHistory], deny: [PermissionsBitField.Flags.SendMessages] },
+            { id: config.supervisorRoleId, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }
         ];
 
         const ticketChannel = await guild.channels.create({
@@ -494,17 +489,19 @@ client.on('interactionCreate', async interaction => {
             components: [row]
         });
 
+        const questionKeys = Object.keys(config.questions).map(Number).sort((a, b) => a - b);
+
         activeTickets.set(ticketChannel.id, {
             guildId: guild.id,
             userId: user.id,
-            step: 1,
+            currentStepNumber: questionKeys[0],
             answers: {},
             claimedBy: null,
             timer: null
         });
 
-        const questions = config.questions || defaultQuestions;
-        await ticketChannel.send(`<@${user.id}> **السؤال 1/6:** ${questions[1]}`);
+        const firstQ = config.questions[questionKeys[0]];
+        await ticketChannel.send(`<@${user.id}> **السؤال 1/${questionKeys.length}:**\n${firstQ.text}`);
 
         return interaction.editReply({ content: `تم فتح تذكرتك بنجاح هنا: <#${ticketChannel.id}> 🎟` });
     }
@@ -521,22 +518,14 @@ client.on('interactionCreate', async interaction => {
 
         if (ticketData) ticketData.claimedBy = user.id;
 
-        await channel.permissionOverwrites.edit(config.staffRoleId, {
-            SendMessages: true,
-            ViewChannel: true
-        }).catch(() => {});
-
-        await channel.permissionOverwrites.edit(user.id, {
-            SendMessages: true,
-            ViewChannel: true,
-            ReadMessageHistory: true
-        }).catch(() => {});
+        await channel.permissionOverwrites.edit(config.staffRoleId, { SendMessages: true, ViewChannel: true }).catch(() => {});
+        await channel.permissionOverwrites.edit(user.id, { SendMessages: true, ViewChannel: true, ReadMessageHistory: true }).catch(() => {});
 
         const currentPoints = staffPoints.get(user.id) || 0;
         staffPoints.set(user.id, currentPoints + 1);
 
         await channel.send({
-            content: `تم استلام التذكرة بنجاح ! ✅️\nالإداري المستلم : <@${user.id}>\nألايدي : (\`${user.id}\`) 👤\nتم منح الإداري نقطة واحدة ( +1 ) ✔\nإجمالي نقاطك الحالية = ${currentPoints + 1} 📊`
+            content: `تم استلام التذكرة بنجاح ! ✅️\nالإداري المستلم : <@${user.id}> (يوزر: \`${user.tag}\`, أيدي: \`${user.id}\`)\nتم منح الإداري نقطة واحدة ( +1 ) ✔\nإجمالي نقاطك الحالية = ${currentPoints + 1} 📊`
         });
 
         return interaction.reply({ content: "تم استلام التذكرة بنجاح وتسجيل النقطة لك.", ephemeral: true });
@@ -553,7 +542,7 @@ client.on('interactionCreate', async interaction => {
         );
 
         await channel.send({ content: "اختر إجراء الإغلاق:", components: [row] });
-        await interaction.reply({ content: "تم إرسال خيارات الإغلاق.", ephemeral: true });
+        return interaction.reply({ content: "تم إرسال خيارات الإغلاق.", ephemeral: true });
     }
 
     if (customId === 'leave_ticket') {
@@ -563,26 +552,25 @@ client.on('interactionCreate', async interaction => {
             const currentPoints = staffPoints.get(user.id) || 1;
             staffPoints.set(user.id, Math.max(0, currentPoints - 1));
 
-            await channel.permissionOverwrites.edit(config.staffRoleId, {
-                SendMessages: false,
-                ViewChannel: true
-            }).catch(() => {});
-
+            await channel.permissionOverwrites.edit(config.staffRoleId, { SendMessages: false, ViewChannel: true }).catch(() => {});
             await channel.permissionOverwrites.delete(user.id).catch(() => {});
 
-            await channel.send(`**ترك التذكرة 🚫**\nالإداري المستلم ترك التذكرة <@${user.id}>\nتم خصم نقطة واحدة منك، وتم مسح صلاحيتك الخاصة وإعادة قفل الكتابة للفريق الإداري.`);
+            await channel.send(`**ترك التذكرة 🚫**\nالإداري المستلم ترك التذكرة <@${user.id}>\nتم خصم نقطة واحدة منك.`);
             
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId('claim_ticket').setLabel('استلام التذكرة ✅️').setStyle(ButtonStyle.Success)
             );
-            await channel.send({ content: `<@&${config.staffRoleId}>\nالرجاء الإستلام`, components: [row] });
+            await channel.send({ content: `<@&${config.staffRoleId}>\nالرجاء الاستلام`, components: [row] });
         }
         return interaction.reply({ content: "تم ترك التذكرة.", ephemeral: true });
     }
 
     if (customId === 'delete_ticket_confirm') {
+        const ticketData = activeTickets.get(channel.id);
+        const ownerId = ticketData ? ticketData.userId : 'غير معروف';
+        
         activeTickets.delete(channel.id);
-        await channel.send("حذف التذكرة 🗑\nسيتم حذف التذكرة...");
+        await channel.send(`حذف التذكرة 🗑\nحذفت التذكرة بواسطة: <@${user.id}> (يوزر: \`${user.tag}\`, أيدي: \`${user.id}\`) | صاحب التذكرة الأساسي ID: \`${ownerId}\`\nسيتم حذف الروم...`);
         setTimeout(() => channel.delete().catch(() => {}), 3000);
     }
 
@@ -617,10 +605,10 @@ client.on('interactionCreate', async interaction => {
         } else {
             await channel.send(`استدعاء الاداري ☑️\n<@&${config.staffRoleId}> الرجاء الرد على التذكرة!`);
         }
-        return interaction.reply({ content: "تم الاستدعاء.", ephemeral: true });
+        return interaction.reply({ content: "تم الاستدعاء بنجاح.", ephemeral: true });
     }
 
-    if (customId === 'accept_ticket') {
+    if (customId === 'accept_ticket' || customId === 'reject_ticket') {
         if (!member.roles.cache.has(config.staffRoleId) && !member.roles.cache.has(config.supervisorRoleId)) {
             return interaction.reply({ content: "عذراً، أزرار القبول والرفض خاصة بالفريق الإداري والمشرفين فقط! ❌", ephemeral: true });
         }
@@ -628,137 +616,22 @@ client.on('interactionCreate', async interaction => {
         const ticketData = activeTickets.get(channel.id);
         if (!ticketData) return;
 
-        try {
-            const targetMember = await guild.members.fetch(ticketData.userId);
-            if (targetMember) {
-                if (config.verifiedRoleId) await targetMember.roles.add(config.verifiedRoleId).catch(() => {});
-                if (config.unverifiedRoleId) await targetMember.roles.remove(config.unverifiedRoleId).catch(() => {});
-            }
-        } catch (err) {
-            console.log("Could not update member roles on accept:", err);
-        }
+        const isAccepted = customId === 'accept_ticket';
 
-        await channel.send("تم قبول الطلب ✅ وتحويل الرتب بنجاح. سيتم إغلاق التذكرة خلال لحظات...");
-        
-        if (config.logChannelId) {
-            const logChan = guild.channels.cache.get(config.logChannelId);
-            if (logChan) {
-                const fetchMessages = async (ch) => {
-                    let sumMessages = [];
-                    let lastId;
-                    while (true) {
-                        const options = { limit: 100 };
-                        if (lastId) options.before = lastId;
-                        const messages = await ch.messages.fetch(options);
-                        if (messages.size === 0) break;
-                        sumMessages.push(...messages.values());
-                        lastId = messages.lastKey();
-                        if (messages.size < 100) break;
-                    }
-                    return sumMessages.sort((a, b) => a.createdTimestamp - b.createdTimestamp);
-                };
-
-                const allMsgs = await fetchMessages(channel);
-                
-                let htmlContent = `<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-    <meta charset="UTF-8">
-    <title>سجل تذكرة - ${channel.name}</title>
-    <style>
-        body { background-color: #313338; color: #dbdee1; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; }
-        .header { background: #2b2d31; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-right: 5px solid #23a55a; }
-        .message { display: flex; margin-bottom: 20px; align-items: flex-start; }
-        .avatar { width: 40px; height: 40px; border-radius: 50%; margin-left: 15px; background-color: #5865f2; display: flex; align-items: center; justify-content: center; font-weight: bold; color: white; overflow: hidden; flex-shrink: 0; }
-        .avatar img { width: 100%; height: 100%; object-fit: cover; }
-        .content { flex-grow: 1; }
-        .username { font-weight: 600; color: #f2f3f5; margin-left: 8px; }
-        .timestamp { font-size: 11px; color: #949ba4; }
-        .text { margin-top: 4px; color: #dbdee1; white-space: pre-wrap; word-break: break-word; line-height: 1.4; }
-        .embed { background: #2b2d31; border-radius: 4px; border-right: 4px solid #5865f2; padding: 10px; margin-top: 8px; max-width: 520px; border-top: 1px solid #3f4147; border-left: 1px solid #3f4147; border-bottom: 1px solid #3f4147; }
-        .embed-title { font-weight: bold; color: white; margin-bottom: 5px; }
-        .embed-desc { font-size: 13px; color: #dbdee1; }
-        .attachment img { max-width: 300px; border-radius: 8px; margin-top: 5px; }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h2>📂 سجل محادثة التذكرة (مقبولة) - ${config.serverDecoration || ''}</h2>
-        <p><strong>اسم الروم:</strong> ${channel.name} | <strong>صاحب التذكرة ID:</strong> ${ticketData.userId} | <strong>الإداري المسؤول:</strong> ${user.tag}</p>
-    </div>
-    <div class="chat-container">`;
-
-                for (const msg of allMsgs) {
-                    const time = new Date(msg.createdTimestamp).toLocaleString();
-                    const authorName = msg.author.username;
-                    const avatarUrl = msg.author.displayAvatarURL({ extension: 'png' });
-                    let text = msg.content || "";
-
-                    htmlContent += `
-        <div class="message">
-            <div class="avatar"><img src="${avatarUrl}" alt="AV"></div>
-            <div class="content">
-                <div>
-                    <span class="username">${authorName}</span>
-                    <span class="timestamp">${time}</span>
-                </div>
-                <div class="text">${text}</div>`;
-
-                    if (msg.embeds && msg.embeds.length > 0) {
-                        for (const embed of msg.embeds) {
-                            htmlContent += `<div class="embed">`;
-                            if (embed.title) htmlContent += `<div class="embed-title">${embed.title}</div>`;
-                            if (embed.description) htmlContent += `<div class="embed-desc">${embed.description.replace(/\n/g, '<br>')}</div>`;
-                            htmlContent += `</div>`;
-                        }
-                    }
-
-                    if (msg.attachments && msg.attachments.size > 0) {
-                        msg.attachments.forEach(att => {
-                            htmlContent += `<div class="attachment"><a href="${att.url}" target="_blank"><img src="${att.url}" alt="Attachment"></a></div>`;
-                        });
-                    }
-
-                    htmlContent += `</div></div>`;
+        if (isAccepted) {
+            try {
+                const targetMember = await guild.members.fetch(ticketData.userId);
+                if (targetMember) {
+                    if (config.verifiedRoleId) await targetMember.roles.add(config.verifiedRoleId).catch(() => {});
+                    if (config.unverifiedRoleId) await targetMember.roles.remove(config.unverifiedRoleId).catch(() => {});
                 }
-
-                htmlContent += `</div></body></html>`;
-
-                const logEmbed = new EmbedBuilder()
-                    .setColor(0x00FF00)
-                    .setTitle(`سجل قبول تفعيل جديد ✅ - ${config.serverDecoration || ''}`)
-                    .setDescription(
-                        `**الإداري المسؤول:** <@${user.id}> (أيدي: \`${user.id}\`)\n` +
-                        `**العضو صاحب التذكرة:** <@${ticketData.userId}>\n` +
-                        `**التاريخ والوقت:** <t:${Math.floor(Date.now() / 1000)}:F>\n\n` +
-                        `١ الإجابة : ${ticketData.answers[1]}\n` +
-                        `٢ الإجابة : ${ticketData.answers[2]}\n` +
-                        `٣ الإجابة : ${ticketData.answers[3]}\n` +
-                        `٤ الإجابة : [صورة](${ticketData.answers[4]})\n` +
-                        `٥ الإجابة : [صورة](${ticketData.answers[5]})\n` +
-                        `٦ الإجابة : ${ticketData.answers[6]}`
-                    );
-
-                const attachment = new AttachmentBuilder(Buffer.from(htmlContent, 'utf-8'), { name: `transcript-${ticketData.userId}.html` });
-
-                await logChan.send({ embeds: [logEmbed], files: [attachment] });
+            } catch (err) {
+                console.log("Role update error:", err);
             }
+            await channel.send("تم قبول الطلب ✅ وتحويل الرتب بنجاح. سيتم إغلاق التذكرة خلال لحظات...");
+        } else {
+            await channel.send("تم رفض الطلب ❌. سيتم إغلاق التذكرة...");
         }
-
-        activeTickets.delete(channel.id);
-        setTimeout(() => channel.delete().catch(() => {}), 15000);
-        return interaction.reply({ content: "تم قبول التفعيل بنجاح.", ephemeral: true });
-    }
-
-    if (customId === 'reject_ticket') {
-        if (!member.roles.cache.has(config.staffRoleId) && !member.roles.cache.has(config.supervisorRoleId)) {
-            return interaction.reply({ content: "عذراً، أزرار القبول والرفض خاصة بالفريق الإداري والمشرفين فقط! ❌", ephemeral: true });
-        }
-
-        const ticketData = activeTickets.get(channel.id);
-        if (!ticketData) return;
-
-        await channel.send("تم رفض الطلب ❌. سيتم إغلاق التذكرة...");
 
         if (config.logChannelId) {
             const logChan = guild.channels.cache.get(config.logChannelId);
@@ -780,94 +653,29 @@ client.on('interactionCreate', async interaction => {
 
                 const allMsgs = await fetchMessages(channel);
                 
-                let htmlContent = `<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-    <meta charset="UTF-8">
-    <title>سجل تذكرة - ${channel.name}</title>
-    <style>
-        body { background-color: #313338; color: #dbdee1; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; }
-        .header { background: #2b2d31; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-right: 5px solid #f23f43; }
-        .message { display: flex; margin-bottom: 20px; align-items: flex-start; }
-        .avatar { width: 40px; height: 40px; border-radius: 50%; margin-left: 15px; background-color: #5865f2; display: flex; align-items: center; justify-content: center; font-weight: bold; color: white; overflow: hidden; flex-shrink: 0; }
-        .avatar img { width: 100%; height: 100%; object-fit: cover; }
-        .content { flex-grow: 1; }
-        .username { font-weight: 600; color: #f2f3f5; margin-left: 8px; }
-        .timestamp { font-size: 11px; color: #949ba4; }
-        .text { margin-top: 4px; color: #dbdee1; white-space: pre-wrap; word-break: break-word; line-height: 1.4; }
-        .embed { background: #2b2d31; border-radius: 4px; border-right: 4px solid #5865f2; padding: 10px; margin-top: 8px; max-width: 520px; border-top: 1px solid #3f4147; border-left: 1px solid #3f4147; border-bottom: 1px solid #3f4147; }
-        .embed-title { font-weight: bold; color: white; margin-bottom: 5px; }
-        .embed-desc { font-size: 13px; color: #dbdee1; }
-        .attachment img { max-width: 300px; border-radius: 8px; margin-top: 5px; }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h2>📂 سجل محادثة التذكرة (مرفوضة) - ${config.serverDecoration || ''}</h2>
-        <p><strong>اسم الروم:</strong> ${channel.name} | <strong>صاحب التذكرة ID:</strong> ${ticketData.userId} | <strong>الإداري المسؤول:</strong> ${user.tag}</p>
-    </div>
-    <div class="chat-container">`;
-
-                for (const msg of allMsgs) {
-                    const time = new Date(msg.createdTimestamp).toLocaleString();
-                    const authorName = msg.author.username;
-                    const avatarUrl = msg.author.displayAvatarURL({ extension: 'png' });
-                    let text = msg.content || "";
-
-                    htmlContent += `
-        <div class="message">
-            <div class="avatar"><img src="${avatarUrl}" alt="AV"></div>
-            <div class="content">
-                <div>
-                    <span class="username">${authorName}</span>
-                    <span class="timestamp">${time}</span>
-                </div>
-                <div class="text">${text}</div>`;
-
-                    if (msg.embeds && msg.embeds.length > 0) {
-                        for (const embed of msg.embeds) {
-                            htmlContent += `<div class="embed">`;
-                            if (embed.title) htmlContent += `<div class="embed-title">${embed.title}</div>`;
-                            if (embed.description) htmlContent += `<div class="embed-desc">${embed.description.replace(/\n/g, '<br>')}</div>`;
-                            htmlContent += `</div>`;
-                        }
-                    }
-
-                    if (msg.attachments && msg.attachments.size > 0) {
-                        msg.attachments.forEach(att => {
-                            htmlContent += `<div class="attachment"><a href="${att.url}" target="_blank"><img src="${att.url}" alt="Attachment"></a></div>`;
-                        });
-                    }
-
-                    htmlContent += `</div></div>`;
+                let answersText = "";
+                for (const [qNum, ans]  of Object.entries(ticketData.answers)) {
+                    answersText += `السؤال ${qNum} : ${ans.startsWith('http') ? `[صورة](${ans})` : ans}\n`;
                 }
 
-                htmlContent += `</div></body></html>`;
-
                 const logEmbed = new EmbedBuilder()
-                    .setColor(0xFF0000)
-                    .setTitle(`سجل رفض تفعيل جديد ❌ - ${config.serverDecoration || ''}`)
+                    .setColor(isAccepted ? 0x00FF00 : 0xFF0000)
+                    .setTitle(`سجل ${isAccepted ? 'قبول' : 'رفض'} تفعيل - ${config.serverDecoration || ''}`)
                     .setDescription(
-                        `**الإداري المسؤول:** <@${user.id}> (أيدي: \`${user.id}\`)\n` +
-                        `**العضو صاحب التذكرة:** <@${ticketData.userId}>\n` +
+                        `**الإداري المسؤول:** <@${user.id}> (يوزر: \`${user.tag}\`, أيدي: \`${user.id}\`)\n` +
+                        `**العضو صاحب التذكرة:** <@${ticketData.userId}> (أيدي: \`${ticketData.userId}\`)\n` +
+                        `**حذفت أو أغلقت بواسطة:** <@${user.id}> (\`${user.tag}\`)\n` +
                         `**التاريخ والوقت:** <t:${Math.floor(Date.now() / 1000)}:F>\n\n` +
-                        `١ الإجابة : ${ticketData.answers[1]}\n` +
-                        `٢ الإجابة : ${ticketData.answers[2]}\n` +
-                        `٣ الإجابة : ${ticketData.answers[3]}\n` +
-                        `٤ الإجابة : [صورة](${ticketData.answers[4]})\n` +
-                        `٥ الإجابة : [صورة](${ticketData.answers[5]})\n` +
-                        `٦ الإجابة : ${ticketData.answers[6]}`
+                        `**الإجابات:**\n${answersText}`
                     );
 
-                const attachment = new AttachmentBuilder(Buffer.from(htmlContent, 'utf-8'), { name: `transcript-rejected-${ticketData.userId}.html` });
-
-                await logChan.send({ embeds: [logEmbed], files: [attachment] });
+                await logChan.send({ embeds: [logEmbed] });
             }
         }
 
         activeTickets.delete(channel.id);
-        setTimeout(() => channel.delete().catch(() => {}), 15000);
-        return interaction.reply({ content: "تم رفض التفعيل بنجاح.", ephemeral: true });
+        setTimeout(() => channel.delete().catch(() => {}), 10000);
+        return interaction.reply({ content: `تم ${isAccepted ? 'قبول' : 'رفض'} التفعيل بنجاح.`, ephemeral: true });
     }
 });
 
